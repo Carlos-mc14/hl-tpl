@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HotelManager - Sistema de Gestión Hotelera
 
-## Getting Started
+## Descripción
+HotelManager es un sistema completo de gestión hotelera con autenticación de usuarios, control de acceso basado en roles, y funcionalidades para la administración de reservas y usuarios.
 
-First, run the development server:
+## Tecnologías
+- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS, shadcn/ui
+- **Backend**: Next.js API Routes, MongoDB
+- **Autenticación**: JWT, Upstash Redis (sesiones)
+- **Email**: SendGrid
+- **Despliegue**: Vercel
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Estado de Implementación
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Autenticación y Seguridad
+- [x] Registro de usuarios
+- [x] Inicio de sesión
+- [x] Verificación de email
+- [x] Recuperación de contraseña
+- [x] Sesiones seguras con Redis
+- [x] Protección CSRF
+- [x] Validación de entradas
+- [x] Encriptación de contraseñas (bcrypt)
+- [x] Middleware de autenticación
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Gestión de Usuarios y Roles
+- [x] CRUD de usuarios
+- [x] CRUD de roles
+- [x] Asignación de permisos
+- [x] Control de acceso basado en roles (RBAC)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Funcionalidades del Hotel
+- [ ] Gestión de habitaciones
+- [ ] Gestión de reservas
+- [ ] Facturación
+- [ ] Reportes
 
-## Learn More
+## Configuración
 
-To learn more about Next.js, take a look at the following resources:
+### Variables de Entorno
+Crea un archivo `.env.local` con las siguientes variables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

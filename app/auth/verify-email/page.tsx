@@ -1,148 +1,108 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { CheckCircle2, MailCheck } from "lucide-react"
-
+import { useEffect, useState } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Loader2, CheckCircle, XCircle } from "lucide-react"
+import Link from "next/link"
 
 export default function VerifyEmailPage() {
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(false)
-  const [isVerified, setIsVerified] = useState(false)
-  const [verificationCode, setVerificationCode] = useState("")
-  const [error, setError] = useState("")
+  const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
+  const [message, setMessage] = useState("")
 
-  const handleResendCode = async () => {
-    setIsLoading(true)
-    setError("")
+  const token = searchParams.get("token")
+  const success = searchParams.get("success")
+  const error = searchParams.get("error")
 
-    try {
-      // This would be replaced with actual API call
-      const response = await fetch("/api/auth/resend-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Failed to resend verification code")
-      }
-
-      // Show success message
-      alert("Verification code has been resent to your email")
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "An unexpected error occurred")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!verificationCode.trim()) {
-      setError("Verification code is required")
+  useEffect(() => {
+    // If we already have success or error in URL params, use that
+    if (success === "true") {
+      setStatus("success")
       return
     }
 
-    setIsLoading(true)
-    setError("")
+    if (error) {
+      setStatus("error")
+      setMessage(decodeURIComponent(error))
+      return
+    }
 
-    try {
-      // This would be replaced with actual API call
-      const response = await fetch("/api/auth/verify-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: verificationCode }),
-      })
+    // If we have a token, verify it
+    if (token) {
+      const verifyToken = async () => {
+        try {
+          const response = await fetch("/api/auth/verify-email", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ token }),
+          })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Verification failed")
+          const data = await response.json()
+
+          if (response.ok) {
+            setStatus("success")
+          } else {
+            setStatus("error")
+            setMessage(data.message || "Failed to verify email")
+          }
+        } catch (err) {
+          setStatus("error")
+          setMessage("An error occurred while verifying your email")
+          console.error(err)
+        }
       }
 
-      // Show success state
-      setIsVerified(true)
-
-      // Redirect after a delay
-      setTimeout(() => {
-        router.push("/dashboard")
-      }, 3000)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "An unexpected error occurred")
-    } finally {
-      setIsLoading(false)
+      verifyToken()
+    } else {
+      setStatus("error")
+      setMessage("No verification token provided")
     }
-  }
-
-  if (isVerified) {
-    return (
-      <div className="container flex h-screen w-screen flex-col items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="space-y-1">
-            <div className="flex justify-center">
-              <CheckCircle2 className="h-12 w-12 text-green-500" />
-            </div>
-            <CardTitle className="text-center text-2xl font-bold">Email Verified!</CardTitle>
-            <CardDescription className="text-center">
-              Your email has been successfully verified. You will be redirected to the dashboard shortly.
-            </CardDescription>
-          </CardHeader>
-          <CardFooter>
-            <Button asChild className="w-full">
-              <Link href="/dashboard">Go to Dashboard</Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    )
-  }
+  }, [token, success, error])
 
   return (
-    <div className="container flex h-screen w-screen flex-col items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <div className="flex justify-center">
-            <MailCheck className="h-12 w-12 text-primary" />
-          </div>
-          <CardTitle className="text-center text-2xl font-bold">Verify your email</CardTitle>
-          <CardDescription className="text-center">
-            We&apos;ve sent a verification code to your email. Please enter it below to verify your account.
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Email Verification</CardTitle>
+          <CardDescription>
+            {status === "loading" && "Verifying your email address..."}
+            {status === "success" && "Your email has been verified!"}
+            {status === "error" && "Email verification failed"}
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleVerify}>
-          <CardContent className="space-y-4">
-            {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-500">{error}</div>}
-            <div className="space-y-2">
-              <Label htmlFor="verificationCode">Verification Code</Label>
-              <Input
-                id="verificationCode"
-                placeholder="Enter your verification code"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Verifying..." : "Verify Email"}
+        <CardContent className="flex flex-col items-center justify-center space-y-4 pt-6">
+          {status === "loading" && <Loader2 className="h-16 w-16 animate-spin text-primary" />}
+          {status === "success" && <CheckCircle className="h-16 w-16 text-green-500" />}
+          {status === "error" && (
+            <>
+              <XCircle className="h-16 w-16 text-red-500" />
+              <p className="text-center text-sm text-red-500">{message}</p>
+            </>
+          )}
+        </CardContent>
+        <CardFooter className="flex flex-col space-y-2">
+          {status === "success" && (
+            <>
+              <p className="text-center text-sm text-gray-500">You can now log in to your account.</p>
+              <Button asChild className="w-full">
+                <Link href="/auth/login">Go to Login</Link>
+              </Button>
+            </>
+          )}
+          {status === "error" && (
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/auth/login">Back to Login</Link>
             </Button>
-            <div className="text-center text-sm">
-              Didn&apos;t receive a code?{" "}
-              <button type="button" onClick={handleResendCode} className="text-primary underline" disabled={isLoading}>
-                Resend code
-              </button>
-            </div>
-          </CardFooter>
-        </form>
+          )}
+          <Button asChild variant="ghost" className="w-full">
+            <Link href="/">Return to Home</Link>
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   )

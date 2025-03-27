@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Home, Bed } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -89,7 +89,6 @@ export default function RegisterPage() {
     setErrors({ firstName: "", lastName: "", email: "", password: "", confirmPassword: "", general: "" })
 
     try {
-      // This would be replaced with actual API call
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,6 +99,9 @@ export default function RegisterPage() {
         const error = await response.json()
         throw new Error(error.message || "Registration failed")
       }
+
+      // Store email for verification page
+      localStorage.setItem("pendingVerificationEmail", formData.email)
 
       // Redirect to verification page
       router.push("/auth/verify-email")
@@ -114,11 +116,26 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="container flex h-screen w-screen flex-col items-center justify-center">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="flex flex-col items-center mb-6">
+        <Link href="/" className="mb-4">
+          <Button variant="ghost" size="sm" className="gap-2">
+            <Home className="h-4 w-4" />
+            Back to Home
+          </Button>
+        </Link>
+        <Link href="/rooms">
+          <Button variant="outline" size="sm" className="gap-2">
+            <Bed className="h-4 w-4" />
+            View Rooms
+          </Button>
+        </Link>
+      </div>
+
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-          <CardDescription>Enter your information to create an account</CardDescription>
+          <CardTitle className="text-2xl font-bold text-center">Create an account</CardTitle>
+          <CardDescription className="text-center">Enter your information to create an account</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">

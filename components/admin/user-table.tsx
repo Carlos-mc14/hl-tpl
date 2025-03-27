@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { MoreHorizontal, Pencil, Trash2, Shield, UserPlus } from "lucide-react"
+import { useState, useEffect } from "react"
+import { MoreHorizontal, Pencil, Trash2, Shield, UserPlus, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -16,64 +16,74 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { UserDialog } from "@/components/admin/user-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/use-toast"
 
-// Mock data - in a real app, this would come from an API
-const users = [
-  {
-    id: "1",
-    name: "John Doe",
-    email: "john@example.com",
-    role: "Administrator",
-    status: "Active",
-    createdAt: "2023-01-15",
-  },
-  {
-    id: "2",
-    name: "Jane Smith",
-    email: "jane@example.com",
-    role: "Manager",
-    status: "Active",
-    createdAt: "2023-02-20",
-  },
-  {
-    id: "3",
-    name: "Robert Johnson",
-    email: "robert@example.com",
-    role: "Staff",
-    status: "Active",
-    createdAt: "2023-03-10",
-  },
-  {
-    id: "4",
-    name: "Emily Davis",
-    email: "emily@example.com",
-    role: "Customer",
-    status: "Inactive",
-    createdAt: "2023-04-05",
-  },
-  {
-    id: "5",
-    name: "Michael Wilson",
-    email: "michael@example.com",
-    role: "Customer",
-    status: "Active",
-    createdAt: "2023-05-12",
-  },
-]
+interface User {
+  _id: string
+  firstName: string
+  lastName: string
+  email: string
+  role: string
+  status: string
+  createdAt: string
+}
 
 export function UserTable() {
   const [searchTerm, setSearchTerm] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<(typeof users)[0] | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [users, setUsers] = useState<User[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Fetch users from the API
+  const fetchUsers = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/admin/users")
+      if (!response.ok) {
+        throw new Error("Failed to fetch users")
+      }
+      const data = await response.json()
+      setUsers(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred while fetching users")
+      toast({
+        title: "Error",
+        description: "Failed to load users. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Load users on component mount
+  useEffect(() => {
+    fetchUsers()
+  }, [])
 
   const filteredUsers = users.filter(
     (user) =>
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.role.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const handleEdit = (user: (typeof users)[0]) => {
+  const handleEdit = (user: User) => {
     setSelectedUser(user)
     setDialogOpen(true)
   }
@@ -83,14 +93,58 @@ export function UserTable() {
     setDialogOpen(true)
   }
 
-  const handleDelete = (userId: string) => {
-    // In a real app, this would call an API to delete the user
-    alert(`Delete user with ID: ${userId}`)
+  const handleDeleteClick = (user: User) => {
+    setSelectedUser(user)
+    setDeleteDialogOpen(true)
   }
 
-  const handleManageRoles = (userId: string) => {
-    // In a real app, this would open a dialog to manage user roles
-    alert(`Manage roles for user with ID: ${userId}`)
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      setIsDeleting(true)
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || "Failed to delete user")
+      }
+
+      // Add toast notification
+      toast({
+        title: "User deleted",
+        description: "The user has been successfully deleted.",
+      })
+
+      // Remove the deleted user from the state
+      setUsers((prev) => prev.filter((user) => user._id !== userId))
+    } catch (err) {
+      console.error("Error deleting user:", err)
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "An error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setDeleteDialogOpen(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedUser) return
+
+    await handleDeleteUser(selectedUser._id)
+  }
+
+  const handleUserUpdated = (updatedUser: User) => {
+    // Update the user in the list
+    setUsers(users.map((user) => (user._id === updatedUser._id ? updatedUser : user)))
+  }
+
+  const handleUserCreated = (newUser: User) => {
+    // Add the new user to the list
+    setUsers([...users, newUser])
   }
 
   return (
@@ -104,10 +158,15 @@ export function UserTable() {
             className="w-[300px]"
           />
         </div>
-        <Button onClick={handleAddNew}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Add User
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={fetchUsers} variant="outline" size="icon" title="Refresh users">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button onClick={handleAddNew}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add User
+          </Button>
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>
@@ -122,7 +181,19 @@ export function UserTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.length === 0 ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  Loading users...
+                </TableCell>
+              </TableRow>
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center text-red-500">
+                  {error}
+                </TableCell>
+              </TableRow>
+            ) : filteredUsers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center">
                   No users found.
@@ -130,16 +201,16 @@ export function UserTable() {
               </TableRow>
             ) : (
               filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.name}</TableCell>
+                <TableRow key={user._id}>
+                  <TableCell className="font-medium">{`${user.firstName} ${user.lastName}`}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
                     <Badge variant={user.role === "Administrator" ? "default" : "outline"}>{user.role}</Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={user.status === "Active" ? "success" : "secondary"}>{user.status}</Badge>
+                    <Badge variant={user.status === "Active" ? "default" : "secondary"}>{user.status}</Badge>
                   </TableCell>
-                  <TableCell>{user.createdAt}</TableCell>
+                  <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -154,12 +225,16 @@ export function UserTable() {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleManageRoles(user.id)}>
+                        <DropdownMenuItem onClick={() => alert(`Manage roles for user: ${user.email}`)}>
                           <Shield className="mr-2 h-4 w-4" />
                           Manage Roles
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteClick(user)}
+                          className="text-red-600"
+                          disabled={user.role === "Administrator"}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete
                         </DropdownMenuItem>
@@ -172,7 +247,35 @@ export function UserTable() {
           </TableBody>
         </Table>
       </div>
-      <UserDialog open={dialogOpen} onOpenChange={setDialogOpen} user={selectedUser} />
+
+      {/* User Dialog for Create/Edit */}
+      <UserDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        user={selectedUser}
+        onUserUpdated={handleUserUpdated}
+        onUserCreated={handleUserCreated}
+      />
+
+      {/* Confirmation Dialog for Delete */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the user
+              {selectedUser && ` "${selectedUser.firstName} ${selectedUser.lastName}"`} and remove their data from the
+              system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700" disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

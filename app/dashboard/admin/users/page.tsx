@@ -3,8 +3,7 @@ import { redirect } from "next/navigation"
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { UserTable } from "@/components/admin/user-table"
-import { getCurrentUser } from "@/lib/session"
-import { checkPermission } from "@/lib/permissions"
+import { getCurrentUser } from "@/lib/session-utils"
 
 export default async function UsersPage() {
   const user = await getCurrentUser()
@@ -14,9 +13,13 @@ export default async function UsersPage() {
   }
 
   // Check if user has permission to access this page
-  const hasPermission = await checkPermission(user.id, "manage:users")
+  const hasPermission =
+    user.role === "Administrator" ||
+    user.permissions.includes("manage:users") ||
+    user.permissions.includes("view:users")
 
   if (!hasPermission) {
+    console.log("User lacks permission for users page:", user)
     redirect("/dashboard")
   }
 
