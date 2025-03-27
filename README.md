@@ -1,39 +1,8 @@
-# HotelManager - Sistema de Gestión Hotelera
 
-## Tecnologías
-- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS, shadcn/ui
-- **Backend**: Next.js API Routes, MongoDB
-- **Autenticación**: JWT, Upstash Redis (sesiones)
-- **Email**: SendGrid
-- **Despliegue**: Vercel
+Copyright (C) 2025 Carlos Mori - Nexius Development Team
 
-## Estado de Implementación
+All Rights Reserved.
 
-### Autenticación y Seguridad
-- [x] Registro de usuarios
-- [x] Inicio de sesión
-- [x] Verificación de email
-- [x] Recuperación de contraseña
-- [x] Sesiones seguras con Redis
-- [x] Protección CSRF
-- [x] Validación de entradas
-- [x] Encriptación de contraseñas (bcrypt)
-- [x] Middleware de autenticación
+This software is provided as-is, without any express or implied warranties. No part of this code may be copied, modified, distributed, or used in any way without explicit written permission from the author.
 
-### Gestión de Usuarios y Roles
-- [x] CRUD de usuarios
-- [x] CRUD de roles
-- [x] Asignación de permisos
-- [x] Control de acceso basado en roles (RBAC)
-
-### Funcionalidades del Hotel
-- [ ] Gestión de habitaciones
-- [ ] Gestión de reservas
-- [ ] Facturación
-- [ ] Reportes
-
-## Configuración
-
-### Variables de Entorno
-Crea un archivo `.env.local` con las siguientes variables:
-
+Unauthorized use, reproduction, or distribution of this software, in whole or in part, is strictly prohibited and may result in legal action.
