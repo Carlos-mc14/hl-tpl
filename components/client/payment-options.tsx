@@ -58,7 +58,8 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
       if (paymentType !== "OnArrival") {
         try {
           console.log("Verificando configuración de PayU...")
-          const response = await fetch("/api/payments/check-config")
+          // Añadir un parámetro de timestamp para evitar caché
+          const response = await fetch(`/api/payments/check-config?t=${Date.now()}`)
           const data = await response.json()
           console.log("Respuesta de verificación de PayU:", data)
 
@@ -66,11 +67,26 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
 
           // Si hay información sobre métodos de pago disponibles, actualizarla
           if (data.availablePaymentMethods) {
+            console.log("Actualizando métodos de pago disponibles:", data.availablePaymentMethods)
             setAvailablePaymentMethods(data.availablePaymentMethods)
 
-            // Establecer el primer método disponible como activo
-            if (!data.availablePaymentMethods.card) {
-              if (data.availablePaymentMethods.yape) {
+            // Verificar si el método activo actual está disponible
+            let shouldUpdateActiveTab = false
+
+            if (activeTab === "card" && !data.availablePaymentMethods.card) {
+              shouldUpdateActiveTab = true
+            } else if (activeTab === "yape" && !data.availablePaymentMethods.yape) {
+              shouldUpdateActiveTab = true
+            } else if (activeTab === "pago_efectivo" && !data.availablePaymentMethods.pagoefectivo) {
+              shouldUpdateActiveTab = true
+            }
+
+            // Si el método activo no está disponible, cambiar a uno disponible
+            if (shouldUpdateActiveTab) {
+              if (data.availablePaymentMethods.card) {
+                setActiveTab("card")
+                setPaymentMethod("VISA")
+              } else if (data.availablePaymentMethods.yape) {
                 setActiveTab("yape")
                 setPaymentMethod("YAPE")
               } else if (data.availablePaymentMethods.pagoefectivo) {
@@ -89,7 +105,6 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
           console.error("Error checking PayU configuration:", err)
           setPayuConfigured(false)
           // Solo mostrar el error si el usuario ha seleccionado un método de pago online
-          
         }
       } else {
         // Si el tipo de pago es "OnArrival", no necesitamos verificar PayU
@@ -98,7 +113,39 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
     }
 
     checkPayuConfig()
-  }, [paymentType])
+  }, [paymentType, activeTab])
+
+  // Actualizar el método de pago cuando cambian los métodos disponibles
+  useEffect(() => {
+    // Si el método actual no está disponible, cambiar a uno disponible
+    if (paymentType !== "OnArrival") {
+      let needToChangeMethod = false
+
+      // Verificar si el método actual está disponible
+      if ((paymentMethod === "VISA" || paymentMethod === "MASTERCARD") && !availablePaymentMethods.card) {
+        needToChangeMethod = true
+      } else if (paymentMethod === "YAPE" && !availablePaymentMethods.yape) {
+        needToChangeMethod = true
+      } else if (paymentMethod === "PAGOEFECTIVO" && !availablePaymentMethods.pagoefectivo) {
+        needToChangeMethod = true
+      }
+
+      // Si necesitamos cambiar el método, buscar uno disponible
+      if (needToChangeMethod) {
+        console.log("Cambiando método de pago porque el actual no está disponible")
+        if (availablePaymentMethods.card) {
+          setPaymentMethod("VISA")
+          setActiveTab("card")
+        } else if (availablePaymentMethods.yape) {
+          setPaymentMethod("YAPE")
+          setActiveTab("yape")
+        } else if (availablePaymentMethods.pagoefectivo) {
+          setPaymentMethod("PAGOEFECTIVO")
+          setActiveTab("pago_efectivo")
+        }
+      }
+    }
+  }, [availablePaymentMethods, paymentMethod, paymentType])
 
   const handlePartialAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number.parseFloat(e.target.value)
@@ -241,6 +288,15 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
   const hasAvailableOnlinePaymentMethods =
     availablePaymentMethods.card || availablePaymentMethods.yape || availablePaymentMethods.pagoefectivo
 
+  // Calcular los métodos disponibles para mostrar en la UI
+  const enabledPaymentMethods = {
+    card: availablePaymentMethods.card,
+    yape: availablePaymentMethods.yape,
+    pagoefectivo: availablePaymentMethods.pagoefectivo,
+  }
+
+  console.log("Métodos de pago habilitados para UI:", enabledPaymentMethods)
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -339,18 +395,18 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
                 className="grid w-full"
                 style={{
                   gridTemplateColumns: `repeat(${
-                    (availablePaymentMethods.card ? 1 : 0) +
-                    (availablePaymentMethods.yape ? 1 : 0) +
-                    (availablePaymentMethods.pagoefectivo ? 1 : 0)
+                    (enabledPaymentMethods.card ? 1 : 0) +
+                    (enabledPaymentMethods.yape ? 1 : 0) +
+                    (enabledPaymentMethods.pagoefectivo ? 1 : 0)
                   }, minmax(0, 1fr))`,
                 }}
               >
-                {availablePaymentMethods.card && <TabsTrigger value="card">Tarjeta</TabsTrigger>}
-                {availablePaymentMethods.yape && <TabsTrigger value="yape">Yape</TabsTrigger>}
-                {availablePaymentMethods.pagoefectivo && <TabsTrigger value="pago_efectivo">PagoEfectivo</TabsTrigger>}
+                {enabledPaymentMethods.card && <TabsTrigger value="card">Tarjeta</TabsTrigger>}
+                {enabledPaymentMethods.yape && <TabsTrigger value="yape">Yape</TabsTrigger>}
+                {enabledPaymentMethods.pagoefectivo && <TabsTrigger value="pago_efectivo">PagoEfectivo</TabsTrigger>}
               </TabsList>
 
-              {availablePaymentMethods.card && (
+              {enabledPaymentMethods.card && (
                 <TabsContent value="card" className="mt-4">
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div
@@ -375,7 +431,7 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
                 </TabsContent>
               )}
 
-              {availablePaymentMethods.yape && (
+              {enabledPaymentMethods.yape && (
                 <TabsContent value="yape" className="mt-4">
                   <div
                     className={`border rounded-md p-3 flex items-center gap-2 cursor-pointer ${paymentMethod === "YAPE" ? "border-primary bg-primary/5" : ""}`}
@@ -404,7 +460,7 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
                 </TabsContent>
               )}
 
-              {availablePaymentMethods.pagoefectivo && (
+              {enabledPaymentMethods.pagoefectivo && (
                 <TabsContent value="pago_efectivo" className="mt-4">
                   <div
                     className={`border rounded-md p-3 flex items-center gap-2 cursor-pointer ${paymentMethod === "PAGOEFECTIVO" ? "border-primary bg-primary/5" : ""}`}

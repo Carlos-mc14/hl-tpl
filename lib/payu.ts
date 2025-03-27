@@ -77,6 +77,211 @@ interface BuyerInfo {
   }
 }
 
+// Interfaces para PayU
+export interface PayUTransaction {
+  order: {
+    accountId: string
+    referenceCode: string
+    description: string
+    language: string
+    signature: string
+    notifyUrl: string
+    additionalValues: {
+      TX_VALUE: {
+        value: number
+        currency: string
+      }
+    }
+    buyer: {
+      merchantBuyerId?: string
+      fullName: string
+      emailAddress: string
+      contactPhone?: string
+      dniNumber?: string
+    }
+    shippingAddress?: {
+      street1: string
+      street2?: string
+      city: string
+      state?: string
+      country: string
+      postalCode?: string
+      phone?: string
+    }
+  }
+  payer?: {
+    merchantPayerId?: string
+    fullName?: string
+    emailAddress?: string
+    contactPhone?: string
+    dniNumber?: string
+  }
+  creditCard?: {
+    number: string
+    securityCode: string
+    expirationDate: string
+    name: string
+  }
+  extraParameters?: {
+    INSTALLMENTS_NUMBER?: number
+    RESPONSE_URL?: string
+    PAYMENT_METHOD_TYPE?: string
+    PAYMENT_METHOD?: string
+    OTP?: string
+  }
+  type: string
+  paymentMethod: string
+  paymentCountry: string
+  deviceSessionId?: string
+  ipAddress: string
+  cookie?: string
+  userAgent?: string
+}
+
+// Función para crear una transacción de PayU
+export function createPayUTransaction(data: {
+  amount: number
+  currency: string
+  description: string
+  referenceCode: string
+  buyerEmail: string
+  buyerName: string
+  returnUrl: string
+  paymentMethod: string
+  cardData?: {
+    number: string
+    name: string
+    expiryMonth: string
+    expiryYear: string
+    cvc: string
+  }
+  otpCode?: string
+  ipAddress: string
+  userAgent: string
+  cookie: string
+}): PayUTransaction {
+  // Validar y limpiar la dirección IP
+  // Si hay múltiples IPs (separadas por comas), tomar solo la primera
+  let cleanIpAddress = data.ipAddress.split(",")[0].trim()
+  // Asegurarse de que la IP no exceda 39 caracteres
+  cleanIpAddress = cleanIpAddress.substring(0, 39)
+
+  // Limpiar user agent y cookie para cumplir con las restricciones de PayU
+  const cleanUserAgent = data.userAgent ? data.userAgent.substring(0, 255) : ""
+  const cleanCookie = data.cookie ? data.cookie.substring(0, 255) : ""
+
+  // Crear la transacción base
+  const transaction: PayUTransaction = {
+    order: {
+      accountId: process.env.PAYU_ACCOUNT_ID || "",
+      referenceCode: data.referenceCode,
+      description: data.description,
+      language: "es",
+      signature: "", // Se calculará después
+      notifyUrl: `${process.env.NEXTAUTH_URL}/api/payments/webhook`,
+      additionalValues: {
+        TX_VALUE: {
+          value: data.amount,
+          currency: data.currency,
+        },
+      },
+      buyer: {
+        fullName: data.buyerName,
+        emailAddress: data.buyerEmail,
+      },
+    },
+    type: "AUTHORIZATION_AND_CAPTURE",
+    paymentMethod: data.paymentMethod,
+    paymentCountry: "PE",
+    ipAddress: cleanIpAddress,
+    userAgent: cleanUserAgent,
+    cookie: cleanCookie,
+  }
+
+  // Añadir parámetros adicionales según el método de pago
+  transaction.extraParameters = {
+    RESPONSE_URL: data.returnUrl,
+  }
+
+  // Si es tarjeta de crédito, añadir los datos de la tarjeta
+  if (data.paymentMethod === "VISA" || data.paymentMethod === "MASTERCARD") {
+    if (data.cardData) {
+      transaction.creditCard = {
+        number: data.cardData.number,
+        securityCode: data.cardData.cvc,
+        expirationDate: `${data.cardData.expiryYear}/${data.cardData.expiryMonth}`,
+        name: data.cardData.name,
+      }
+    }
+  }
+
+  // Si es Yape, añadir el código OTP
+  if (data.paymentMethod === "YAPE" && data.otpCode) {
+    transaction.extraParameters.OTP = data.otpCode
+  }
+
+  return transaction
+}
+
+// Función para calcular la firma de PayU
+export function calculateSignature(
+  apiKey: string,
+  merchantId: string,
+  referenceCode: string,
+  amount: number,
+  currency: string,
+): string {
+  const crypto = require("crypto")
+  const data = `${apiKey}~${merchantId}~${referenceCode}~${amount}~${currency}`
+  return crypto.createHash("md5").update(data).digest("hex")
+}
+
+// Función para enviar la transacción a PayU
+export async function sendTransactionToPayU(transaction: PayUTransaction): Promise<any> {
+  try {
+    // Calcular la firma
+    const apiKey = process.env.PAYU_API_KEY || ""
+    const merchantId = process.env.PAYU_MERCHANT_ID || ""
+    const referenceCode = transaction.order.referenceCode
+    const amount = transaction.order.additionalValues.TX_VALUE.value
+    const currency = transaction.order.additionalValues.TX_VALUE.currency
+
+    transaction.order.signature = calculateSignature(apiKey, merchantId, referenceCode, amount, currency)
+
+    // Enviar la transacción a PayU
+    const payuApiUrl = process.env.PAYU_API_URL || ""
+
+    console.log("Enviando transacción a PayU:", JSON.stringify(transaction, null, 2))
+
+    const response = await fetch(`${payuApiUrl}/payments-api/4.0/service.cgi`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Accept-Language": "es",
+        Authorization: `Basic ${Buffer.from(`${process.env.PAYU_API_LOGIN}:${apiKey}`).toString("base64")}`,
+      },
+      body: JSON.stringify({
+        command: "SUBMIT_TRANSACTION",
+        merchant: {
+          apiKey,
+          apiLogin: process.env.PAYU_API_LOGIN,
+        },
+        transaction,
+        test: process.env.NODE_ENV !== "production",
+      }),
+    })
+
+    const data = await response.json()
+    console.log("Respuesta de PayU:", JSON.stringify(data, null, 2))
+
+    return data
+  } catch (error) {
+    console.error("Error al enviar transacción a PayU:", error)
+    throw error
+  }
+}
+
 // Actualizar la función createPaymentRequest para usar el ID correcto en la firma
 export function createPaymentRequest(
   reservationId: string,
@@ -150,6 +355,11 @@ export function createPaymentRequest(
   const userAgent = clientInfo?.userAgent || "Mozilla/5.0"
   const cookie = clientInfo?.cookie || crypto.randomUUID()
 
+  // Validar y truncar la información del cliente para cumplir con las restricciones de PayU
+  const validatedIpAddress = ipAddress.length > 39 ? ipAddress.substring(0, 39) : ipAddress
+  const validatedUserAgent = userAgent.length > 255 ? userAgent.substring(0, 255) : userAgent
+  const validatedCookie = cookie.length > 255 ? cookie.substring(0, 255) : cookie
+
   // Crea la solicitud de pago con el formato requerido por la documentación actualizada
   const paymentRequest: any = {
     language: LANGUAGE,
@@ -222,9 +432,9 @@ export function createPaymentRequest(
       expirationDate: expirationDate,
       paymentCountry: "PE",
       deviceSessionId: deviceSessionId,
-      ipAddress: ipAddress,
-      cookie: cookie,
-      userAgent: userAgent,
+      ipAddress: validatedIpAddress,
+      cookie: validatedCookie,
+      userAgent: validatedUserAgent,
     },
     test: process.env.NODE_ENV !== "production",
   }

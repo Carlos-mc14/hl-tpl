@@ -55,11 +55,21 @@ export async function POST(request: Request) {
     let actualReservationId = reservationId
 
     // Obtener información del cliente para PayU
+    let ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1"
+    // Si la dirección IP contiene comas (múltiples IPs), tomar solo la primera
+    if (ipAddress.includes(",")) {
+      ipAddress = ipAddress.split(",")[0].trim()
+    }
+    // Asegurar que no exceda los 39 caracteres
+    if (ipAddress.length > 39) {
+      ipAddress = ipAddress.substring(0, 39)
+    }
+
     const clientInfo = {
-      ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "127.0.0.1",
-      userAgent: request.headers.get("user-agent") || "Unknown Browser",
-      deviceSessionId: crypto.randomUUID(), // Idealmente esto vendría del cliente
-      cookie: crypto.randomUUID(), // Idealmente esto sería un identificador de sesión real
+      ipAddress,
+      userAgent: (request.headers.get("user-agent") || "Unknown Browser").substring(0, 255), // También limitar user-agent
+      deviceSessionId: crypto.randomUUID(),
+      cookie: crypto.randomUUID(),
     }
 
     if (isTemporaryId) {
