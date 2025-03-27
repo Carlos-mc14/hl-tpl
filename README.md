@@ -1,8 +1,5 @@
 # HotelManager - Sistema de Gestión Hotelera
 
-## Descripción
-HotelManager es un sistema completo de gestión hotelera con autenticación de usuarios, control de acceso basado en roles, y funcionalidades para la administración de reservas y usuarios.
-
 ## Tecnologías
 - **Frontend**: Next.js 14 (App Router), React, Tailwind CSS, shadcn/ui
 - **Backend**: Next.js API Routes, MongoDB
