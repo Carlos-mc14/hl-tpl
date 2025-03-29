@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log("PayU webhook received:", body)
+    console.log("PayU webhook received:", JSON.stringify(body))
 
     // Verificar si es una notificación en formato nuevo (JSON) o antiguo (form data)
     let paymentData
@@ -61,6 +61,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Invalid notification data" }, { status: 400 })
     }
 
+    console.log("Parsed payment data:", JSON.stringify(paymentData))
+
     const db = await getDb()
 
     // Buscar el pago por referenceCode
@@ -73,7 +75,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Payment not found" }, { status: 404 })
     }
 
-    console.log("Payment found:", payment._id.toString())
+    console.log(
+      "Payment found:",
+      payment._id.toString(),
+      "with status:",
+      payment.status,
+      "-> new status:",
+      paymentData.status,
+    )
 
     // Actualizar el estado del pago
     await db.collection("payments").updateOne(
@@ -93,12 +102,16 @@ export async function POST(request: Request) {
 
     // Si el pago es para una reserva temporal y está completado, convertirla en permanente
     if (payment.metadata && payment.metadata.isTemporary === true && paymentData.status === "Completed") {
+      console.log("Processing completed payment for temporary reservation")
+
       // Buscar la reserva temporal
       const tempReservation = await db.collection("temporaryReservations").findOne({
         _id: new ObjectId(payment.reservationId),
       })
 
       if (tempReservation) {
+        console.log("Temporary reservation found:", tempReservation._id)
+
         // Verificar si ya existe una reserva permanente
         const existingPermanentReservation = await db.collection("reservations").findOne({
           "metadata.originalTempId": payment.metadata.originalTempId,
@@ -302,6 +315,23 @@ Gracias por su preferencia.`,
     } else if (!payment.metadata?.isTemporary && paymentData.status === "Completed") {
       // Para reservas normales (no temporales), actualizar el estado del pago
       if (payment.reservationId) {
+        console.log("Updating payment status for permanent reservation:", payment.reservationId)
+
+        // Actualizar el estado de la reserva a "Confirmed" si está en "Pending"
+        const reservation = await db.collection("reservations").findOne({
+          _id: new ObjectId(payment.reservationId),
+        })
+
+        if (reservation && reservation.status === "Pending") {
+          console.log("Updating reservation status from Pending to Confirmed")
+          await db
+            .collection("reservations")
+            .updateOne(
+              { _id: new ObjectId(payment.reservationId) },
+              { $set: { status: "Confirmed", updatedAt: new Date() } },
+            )
+        }
+
         await calculateReservationPaymentStatus(payment.reservationId)
 
         // Invalidar caché para esta reserva
@@ -311,10 +341,6 @@ Gracias por su preferencia.`,
         await invalidateCachePattern("reservationsWithDetails:*")
 
         // Obtener la reserva para enviar el correo de confirmación
-        const reservation = await db.collection("reservations").findOne({
-          _id: new ObjectId(payment.reservationId),
-        })
-
         if (reservation) {
           // Enviar correo de confirmación de pago
           try {
@@ -344,6 +370,13 @@ Gracias por su preferencia.`,
       }
     }
 
+    // Forzar la invalidación de todas las cachés relacionadas con reservas
+    console.log("Forcing cache invalidation for all reservations")
+    await invalidateCachePattern("*reservations*")
+    await invalidateCachePattern("*Reservations*")
+    await invalidateCachePattern("*reservation*")
+    await invalidateCachePattern("*Reservation*")
+
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error("PayU webhook error:", error)
@@ -353,11 +386,13 @@ Gracias por su preferencia.`,
 
 // Función auxiliar para mapear estados de transacción de PayU
 function mapTransactionStatus(state: string): "Completed" | "Failed" | "Pending" {
-  switch (state) {
+  const stateUpper = state.toUpperCase()
+  switch (stateUpper) {
     case "APPROVED":
       return "Completed"
     case "DECLINED":
     case "EXPIRED":
+    case "REJECTED":
       return "Failed"
     default:
       return "Pending"

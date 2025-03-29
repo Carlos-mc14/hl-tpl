@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -52,24 +52,101 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
   const [activeTab, setActiveTab] = useState("today")
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reservations, setReservations] = useState<any[]>([])
   const [filteredReservations, setFilteredReservations] = useState<any[]>([])
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<any>(null)
-  const [refreshTrigger, setRefreshTrigger] = useState(0) // Add a refresh trigger
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  // Función de actualización mejorada
+  const fetchReservations = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) {
+        setIsLoading(true)
+      } else {
+        setIsRefreshing(true)
+      }
+      setError(null)
+
+      try {
+        const currentRange = dateRanges[activeTab as keyof typeof dateRanges]
+        // Add a cache-busting parameter to prevent browser caching
+        const timestamp = new Date().getTime()
+
+        console.log(`Fetching reservations for ${activeTab} (${currentRange.start} to ${currentRange.end})`)
+
+        const response = await fetch(
+          `/api/admin/reservations?startDate=${currentRange.start}&endDate=${currentRange.end}&_=${timestamp}`,
+          {
+            // Add cache control headers
+            headers: {
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+            // Force a new request
+            cache: "no-store",
+          },
+        )
+
+        if (!response.ok) {
+          throw new Error(`Error al cargar las reservaciones: ${response.status} ${response.statusText}`)
+        }
+
+        const data = await response.json()
+        console.log(`Loaded ${data.length} reservations for ${activeTab}`)
+
+        // Log the statuses of the reservations for debugging
+        const statusCounts: Record<string, number> = {}
+        data.forEach((res: any) => {
+          statusCounts[res.status] = (statusCounts[res.status] || 0) + 1
+        })
+        console.log("Reservation status counts:", statusCounts)
+
+        setReservations(data)
+        setFilteredReservations(data)
+
+        if (!showLoading && data.length > 0) {
+          toast({
+            title: "Datos actualizados",
+            description: `Se han cargado ${data.length} reservaciones.`,
+            duration: 3000,
+          })
+        }
+      } catch (err) {
+        console.error("Error fetching reservations:", err)
+        setError(err instanceof Error ? err.message : "Error al cargar las reservaciones")
+        if (showLoading) {
+          toast({
+            title: "Error",
+            description: "No se pudieron cargar las reservaciones. Por favor, intente nuevamente.",
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (showLoading) {
+          setIsLoading(false)
+        } else {
+          setIsRefreshing(false)
+        }
+      }
+    },
+    [activeTab, dateRanges],
+  )
 
   // Cargar reservaciones según el período seleccionado
   useEffect(() => {
     fetchReservations()
 
-    // Set up an interval to refresh data every 15 seconds
+    // Set up an interval to refresh data every 10 seconds
     const intervalId = setInterval(() => {
       fetchReservations(false) // Silent refresh (no loading indicator)
-    }, 15000)
+    }, 10000) // Reduced to 10 seconds for more frequent updates
 
     return () => clearInterval(intervalId)
-  }, [activeTab, refreshTrigger])
+  }, [activeTab, refreshTrigger, fetchReservations])
 
   // Filtrar reservaciones cuando cambia el término de búsqueda
   useEffect(() => {
@@ -89,52 +166,6 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     }
   }, [searchTerm, reservations])
 
-  const fetchReservations = async (showLoading = true) => {
-    if (showLoading) {
-      setIsLoading(true)
-    }
-    setError(null)
-
-    try {
-      const currentRange = dateRanges[activeTab as keyof typeof dateRanges]
-      // Add a cache-busting parameter to prevent browser caching
-      const timestamp = new Date().getTime()
-      const response = await fetch(
-        `/api/admin/reservations?startDate=${currentRange.start}&endDate=${currentRange.end}&_=${timestamp}`,
-        {
-          // Add cache control headers
-          headers: {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        },
-      )
-
-      if (!response.ok) {
-        throw new Error("Error al cargar las reservaciones")
-      }
-
-      const data = await response.json()
-      console.log(`Loaded ${data.length} reservations for ${activeTab}`)
-      setReservations(data)
-      setFilteredReservations(data)
-    } catch (err) {
-      console.error("Error fetching reservations:", err)
-      setError(err instanceof Error ? err.message : "Error al cargar las reservaciones")
-      if (showLoading) {
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar las reservaciones. Por favor, intente nuevamente.",
-        })
-      }
-    } finally {
-      if (showLoading) {
-        setIsLoading(false)
-      }
-    }
-  }
-
   const handleViewDetails = (reservation: any) => {
     setSelectedReservation(reservation)
     setDetailsDialogOpen(true)
@@ -144,6 +175,11 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     try {
       const response = await fetch(`/api/admin/reservations/${reservationId}/check-in`, {
         method: "POST",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
       })
 
       if (!response.ok) {
@@ -171,6 +207,11 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     try {
       const response = await fetch(`/api/admin/reservations/${reservationId}/check-out`, {
         method: "POST",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
       })
 
       if (!response.ok) {
@@ -254,8 +295,9 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
               size="icon"
               onClick={() => setRefreshTrigger((prev) => prev + 1)}
               title="Actualizar"
+              disabled={isRefreshing}
             >
-              <RefreshCw className="h-4 w-4" />
+              {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
           </div>
         </div>
