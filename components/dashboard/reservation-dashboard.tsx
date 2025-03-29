@@ -57,11 +57,19 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
   const [filteredReservations, setFilteredReservations] = useState<any[]>([])
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<any>(null)
+  const [refreshTrigger, setRefreshTrigger] = useState(0) // Add a refresh trigger
 
   // Cargar reservaciones según el período seleccionado
   useEffect(() => {
     fetchReservations()
-  }, [activeTab])
+
+    // Set up an interval to refresh data every 30 seconds
+    const intervalId = setInterval(() => {
+      fetchReservations(false) // Silent refresh (no loading indicator)
+    }, 30000)
+
+    return () => clearInterval(intervalId)
+  }, [activeTab, refreshTrigger])
 
   // Filtrar reservaciones cuando cambia el término de búsqueda
   useEffect(() => {
@@ -81,14 +89,26 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     }
   }, [searchTerm, reservations])
 
-  const fetchReservations = async () => {
-    setIsLoading(true)
+  const fetchReservations = async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true)
+    }
     setError(null)
 
     try {
       const currentRange = dateRanges[activeTab as keyof typeof dateRanges]
+      // Add a cache-busting parameter to prevent browser caching
+      const timestamp = new Date().getTime()
       const response = await fetch(
-        `/api/admin/reservations?startDate=${currentRange.start}&endDate=${currentRange.end}`,
+        `/api/admin/reservations?startDate=${currentRange.start}&endDate=${currentRange.end}&_=${timestamp}`,
+        {
+          // Add cache control headers
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        },
       )
 
       if (!response.ok) {
@@ -101,12 +121,16 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     } catch (err) {
       console.error("Error fetching reservations:", err)
       setError(err instanceof Error ? err.message : "Error al cargar las reservaciones")
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar las reservaciones. Por favor, intente nuevamente.",
-      })
+      if (showLoading) {
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar las reservaciones. Por favor, intente nuevamente.",
+        })
+      }
     } finally {
-      setIsLoading(false)
+      if (showLoading) {
+        setIsLoading(false)
+      }
     }
   }
 
@@ -131,7 +155,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
       })
 
       // Actualizar la lista de reservaciones
-      fetchReservations()
+      setRefreshTrigger((prev) => prev + 1) // Trigger a refresh
     } catch (err) {
       console.error("Error during check-in:", err)
       toast({
@@ -158,7 +182,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
       })
 
       // Actualizar la lista de reservaciones
-      fetchReservations()
+      setRefreshTrigger((prev) => prev + 1) // Trigger a refresh
     } catch (err) {
       console.error("Error during check-out:", err)
       toast({
@@ -222,7 +246,12 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
                 className="pl-8 w-[200px] sm:w-[300px]"
               />
             </div>
-            <Button variant="outline" size="icon" onClick={fetchReservations} title="Actualizar">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setRefreshTrigger((prev) => prev + 1)}
+              title="Actualizar"
+            >
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>

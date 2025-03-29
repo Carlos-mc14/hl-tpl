@@ -44,7 +44,7 @@ export default async function RoomsPage() {
         <section
           className="bg-cover bg-center py-24 text-white relative"
           style={{
-            backgroundImage: `url(${serializedSiteConfig.heroImageUrl || "/placeholder.svg?height=600&width=1200"})`,
+            backgroundImage: `url(${serializedSiteConfig.homepage.heroImageUrl || "/placeholder.svg?height=600&width=1200"})`,
           }}
         >
           <div className="absolute inset-0 bg-black/50"></div>

@@ -7,8 +7,40 @@ import { CheckCircle, Calendar, Bed, Users, DollarSign, Loader2, AlertCircle } f
 
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import ClientHeader from "@/components/client/client-header"
-import ClientFooter from "@/components/client/client-footer"
+import { SiteHeader } from "@/components/site/site-header"
+import { SiteFooter } from "@/components/site/site-footer"
+
+interface SiteConfig {
+  hotelName: string
+  logoUrl: string
+  favicon: string
+  primaryColor: string
+  secondaryColor: string
+  contactInfo: {
+    phone: string
+    email: string
+    address: string
+    googleMapsUrl: string
+  }
+  socialMedia: {
+    facebook: string
+    instagram: string
+    twitter: string
+    tripadvisor: string
+  }
+  footer: {
+    copyrightText: string
+    showPaymentMethods: boolean
+    columns: Array<{
+      title: string
+      links: Array<{
+        text: string
+        url: string
+      }>
+    }>
+  }
+  // Add other properties as needed
+}
 
 interface ReservationDetails {
   firstName: string
@@ -37,11 +69,33 @@ export default function ConfirmationPage() {
   const [reservation, setReservation] = useState<ReservationDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null)
+  const [configLoading, setConfigLoading] = useState(true)
 
   const paymentId = searchParams.get("paymentId")
   const paymentCompleted = sessionStorage.getItem("paymentCompleted") === "true"
   const paymentMethod = sessionStorage.getItem("paymentMethod") || ""
   const actualReservationId = sessionStorage.getItem("actualReservationId") || ""
+
+  // Fetch site config
+  useEffect(() => {
+    async function fetchSiteConfig() {
+      try {
+        const response = await fetch("/api/site-config")
+        if (!response.ok) {
+          throw new Error("Failed to fetch site configuration")
+        }
+        const data = await response.json()
+        setSiteConfig(data)
+      } catch (error) {
+        console.error("Error fetching site config:", error)
+      } finally {
+        setConfigLoading(false)
+      }
+    }
+
+    fetchSiteConfig()
+  }, [])
 
   useEffect(() => {
     // Get reservation details from session storage
@@ -139,32 +193,36 @@ export default function ConfirmationPage() {
     }
   }, [paymentId, paymentCompleted, paymentMethod, actualReservationId])
 
-  if (isLoading) {
+  if (isLoading || configLoading) {
     return (
       <div className="flex min-h-screen flex-col">
-        <ClientHeader />
+        {siteConfig ? <SiteHeader siteConfig={siteConfig} /> : <div className="h-16 border-b"></div>}
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
             <p className="mt-4 text-lg">Verificando información de la reserva...</p>
           </div>
         </main>
-        <ClientFooter />
+        {siteConfig ? <SiteFooter siteConfig={siteConfig} /> : <div className="h-16 border-t"></div>}
       </div>
     )
   }
 
-  if (error || !reservation) {
+  if (error || !reservation || !siteConfig) {
     return (
       <div className="flex min-h-screen flex-col">
-        <ClientHeader />
+        {siteConfig ? <SiteHeader siteConfig={siteConfig} /> : <div className="h-16 border-b"></div>}
         <main className="flex-1">
           <div className="container mx-auto px-4 py-12 md:py-24">
             <div className="max-w-md mx-auto text-center">
               <Alert variant="destructive" className="mb-6">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error || "No se encontró información de la reserva"}</AlertDescription>
+                <AlertDescription>
+                  {error || !reservation
+                    ? "No se encontró información de la reserva"
+                    : "Error al cargar la configuración del sitio"}
+                </AlertDescription>
               </Alert>
               <Button asChild>
                 <Link href="/reservations">Hacer una Nueva Reserva</Link>
@@ -172,14 +230,14 @@ export default function ConfirmationPage() {
             </div>
           </div>
         </main>
-        <ClientFooter />
+        {siteConfig ? <SiteFooter siteConfig={siteConfig} /> : <div className="h-16 border-t"></div>}
       </div>
     )
   }
 
   return (
     <div className="flex min-h-screen flex-col">
-      <ClientHeader />
+      <SiteHeader siteConfig={siteConfig} />
       <main className="flex-1">
         <div className="container mx-auto px-4 py-12 md:py-24">
           <div className="max-w-3xl mx-auto">
@@ -300,7 +358,7 @@ export default function ConfirmationPage() {
           </div>
         </div>
       </main>
-      <ClientFooter />
+      <SiteFooter siteConfig={siteConfig} />
     </div>
   )
 }

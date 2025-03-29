@@ -17,7 +17,9 @@ export async function generateMetadata() {
     description: siteConfig.seo.metaDescription,
     keywords: siteConfig.seo.keywords.split(",").map((keyword: string) => keyword.trim()),
     icons: {
-      icon: siteConfig.favicon,
+      icon: siteConfig.favicon || "/favicon.ico",
+      shortcut: siteConfig.favicon || "/favicon.ico",
+      apple: siteConfig.favicon || "/favicon.ico",
     },
   }
 }
@@ -67,6 +69,7 @@ export default async function RootLayout({
             }),
           }}
         />
+        <link rel="icon" href={siteConfig.favicon || "/favicon.ico"} />
       </head>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>

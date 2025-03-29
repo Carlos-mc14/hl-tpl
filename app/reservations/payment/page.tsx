@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 
 import PaymentOptions from "@/components/client/payment-options"
-import ClientHeader from "@/components/client/client-header"
-import ClientFooter from "@/components/client/client-footer"
+import { SiteHeader } from "@/components/site/site-header"
+import { SiteFooter } from "@/components/site/site-footer"
 
 interface ReservationDetails {
   reservationId: string
@@ -19,13 +19,56 @@ interface ReservationDetails {
   lastName: string
 }
 
+interface SiteConfig {
+  hotelName: string
+  logoUrl: string
+  favicon: string
+  primaryColor: string
+  secondaryColor: string
+  contactInfo: {
+    phone: string
+    email: string
+    address: string
+    googleMapsUrl: string
+  }
+  socialMedia: {
+    facebook: string
+    instagram: string
+    twitter: string
+    tripadvisor: string
+  }
+  footer: {
+    copyrightText: string
+    showPaymentMethods: boolean
+    columns: Array<{
+      title: string
+      links: Array<{
+        text: string
+        url: string
+      }>
+    }>
+  }
+  // Add other properties as needed
+}
+
 export default function PaymentPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [reservation, setReservation] = useState<ReservationDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null)
 
   useEffect(() => {
+    // Fetch site config
+    fetch("/api/site-config")
+      .then((res) => res.json())
+      .then((data) => {
+        setSiteConfig(data)
+      })
+      .catch((err) => {
+        console.error("Error fetching site config:", err)
+      })
+
     // Get reservation details from session storage
     const reservationData = sessionStorage.getItem("reservation")
 
@@ -59,17 +102,25 @@ export default function PaymentPage() {
     router.push("/reservations/confirmation")
   }
 
-  if (isLoading) {
+  if (isLoading || !siteConfig) {
     return (
       <div className="flex min-h-screen flex-col">
-        <ClientHeader />
+        <div className="h-16 border-b flex items-center px-4">
+          <div className="font-semibold">Hotel System</div>
+        </div>
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
             <p className="mt-4 text-lg">Cargando información de pago...</p>
           </div>
         </main>
-        <ClientFooter />
+        <div className="py-6 border-t">
+          <div className="container mx-auto px-4">
+            <p className="text-center text-sm text-muted-foreground">
+              © {new Date().getFullYear()} Hotel System. All rights reserved.
+            </p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -77,7 +128,7 @@ export default function PaymentPage() {
   if (!reservation) {
     return (
       <div className="flex min-h-screen flex-col">
-        <ClientHeader />
+        <SiteHeader siteConfig={siteConfig} />
         <main className="flex-1">
           <div className="container mx-auto px-4 py-12 md:py-24">
             <div className="max-w-md mx-auto text-center">
@@ -94,14 +145,14 @@ export default function PaymentPage() {
             </div>
           </div>
         </main>
-        <ClientFooter />
+        <SiteFooter siteConfig={siteConfig} />
       </div>
     )
   }
 
   return (
     <div className="flex min-h-screen flex-col">
-      <ClientHeader />
+      <SiteHeader siteConfig={siteConfig} />
       <main className="flex-1">
         <div className="container mx-auto px-4 py-12 md:py-24">
           <div className="max-w-3xl mx-auto">
@@ -143,7 +194,7 @@ export default function PaymentPage() {
           </div>
         </div>
       </main>
-      <ClientFooter />
+      <SiteFooter siteConfig={siteConfig} />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getDb } from "@/lib/db"
+import { getDb } from "@/lib/mongodb"
 import { getCurrentUser } from "@/lib/session"
 
 // Obtener la configuración de métodos de pago

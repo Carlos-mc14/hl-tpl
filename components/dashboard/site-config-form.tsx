@@ -221,6 +221,11 @@ export function SiteConfigForm({ initialData }: SiteConfigFormProps) {
         throw new Error(errorData.message || "Failed to update site configuration")
       }
 
+      // Force a page reload to update the favicon
+      if (typeof window !== "undefined" && formData.favicon !== initialData.favicon) {
+        window.location.reload()
+      }
+
       toast({
         title: "Success",
         description: "Site configuration updated successfully",

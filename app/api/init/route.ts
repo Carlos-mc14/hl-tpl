@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { initializeRoles } from "@/models/role"
 import { createUser, getUserByEmail } from "@/models/user"
-import { getDb } from "@/lib/db"
+import { getDb } from "@/lib/mongodb"
 import { initializeRoomTypes } from "@/models/room-type"
 import { initializeRooms } from "@/models/room"
 import bcrypt from "bcryptjs"

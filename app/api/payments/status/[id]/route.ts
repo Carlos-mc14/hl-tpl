@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getPaymentById, calculateReservationPaymentStatus } from "@/models/payment"
 import { verifyPayment } from "@/lib/payu"
 import { getCurrentUser } from "@/lib/session"
-import { getDb } from "@/lib/db"
+import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {

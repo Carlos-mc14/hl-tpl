@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb"
-import { getDb, releaseConnection } from "@/lib/db"
+import { getDb, releaseConnection } from "@/lib/mongodb"
 import { getRoomTypeById } from "./room-type"
 import { getCachedData, invalidateCache, invalidateCachePattern } from "@/lib/cache"
 

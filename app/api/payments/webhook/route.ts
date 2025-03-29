@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
-import { getDb } from "@/lib/db"
+import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { parsePayUNotification } from "@/lib/payu"
 import type { ReservationStatus } from "@/models/reservation"
 import { calculateReservationPaymentStatus } from "@/models/payment"
 import { sendEmail } from "@/lib/email"
+import { invalidateCache, invalidateCachePattern } from "@/lib/cache"
 
 // Webhook para recibir notificaciones de PayU
 export async function POST(request: Request) {
@@ -85,6 +86,10 @@ export async function POST(request: Request) {
         },
       },
     )
+
+    // Invalidar caché relacionada con pagos
+    await invalidateCache(`payment:${payment._id}`)
+    await invalidateCachePattern("payments:*")
 
     // Si el pago es para una reserva temporal y está completado, convertirla en permanente
     if (payment.metadata && payment.metadata.isTemporary === true && paymentData.status === "Completed") {
@@ -170,6 +175,10 @@ export async function POST(request: Request) {
           // Recalcular el estado del pago de la reserva
           await calculateReservationPaymentStatus(newReservationId)
 
+          // Invalidar caché relacionada con reservaciones
+          await invalidateCachePattern("reservations:*")
+          await invalidateCachePattern("reservationsWithDetails:*")
+
           // Enviar correo de confirmación al cliente
           try {
             await sendEmail({
@@ -210,6 +219,15 @@ Gracias por su preferencia.`,
           console.log("Permanent reservation created:", newReservationId)
         } else {
           console.log("Permanent reservation already exists:", existingPermanentReservation._id)
+
+          // Actualizar el estado de pago de la reserva existente
+          await calculateReservationPaymentStatus(existingPermanentReservation._id.toString())
+
+          // Invalidar caché para esta reserva
+          await invalidateCache(`reservation:${existingPermanentReservation._id}`)
+          await invalidateCache(`reservationWithDetails:${existingPermanentReservation._id}`)
+          await invalidateCachePattern("reservations:*")
+          await invalidateCachePattern("reservationsWithDetails:*")
         }
       } else {
         console.error("Temporary reservation not found:", payment.reservationId)
@@ -218,6 +236,12 @@ Gracias por su preferencia.`,
       // Para reservas normales (no temporales), actualizar el estado del pago
       if (payment.reservationId) {
         await calculateReservationPaymentStatus(payment.reservationId)
+
+        // Invalidar caché para esta reserva
+        await invalidateCache(`reservation:${payment.reservationId}`)
+        await invalidateCache(`reservationWithDetails:${payment.reservationId}`)
+        await invalidateCachePattern("reservations:*")
+        await invalidateCachePattern("reservationsWithDetails:*")
 
         // Obtener la reserva para enviar el correo de confirmación
         const reservation = await db.collection("reservations").findOne({

@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb"
-import { getDb, releaseConnection } from "@/lib/db"
+import { getDb, releaseConnection } from "@/lib/mongodb"
 import { getCachedData, invalidateCache } from "@/lib/cache"
 
 export interface SiteConfig {
@@ -95,8 +95,14 @@ export async function updateSiteConfig(configData: Partial<SiteConfig>) {
       { upsert: true },
     )
 
-    // Invalidar caché
+    // Invalidate cache more aggressively
     await invalidateCache("siteConfig")
+
+    // If favicon is updated, invalidate any related caches
+    if ("favicon" in updateData) {
+      console.log("Favicon updated, invalidating related caches")
+      // Additional cache invalidation could be added here if needed
+    }
 
     return result.modifiedCount > 0 || result.upsertedCount > 0
   } finally {

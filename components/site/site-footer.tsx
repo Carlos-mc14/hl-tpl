@@ -88,9 +88,9 @@ export function SiteFooter({ siteConfig }: SiteFooterProps) {
             {/* Payment Methods */}
             {siteConfig.footer.showPaymentMethods && (
               <div className="flex items-center space-x-2">
-                <img src="/images/visa.svg" alt="Visa" className="h-8" />
-                <img src="/images/mastercard.svg" alt="Mastercard" className="h-8" />
-                <img src="/images/amex.svg" alt="American Express" className="h-8" />
+                <img src="/images/visa.svg" alt="Visa" className="h-11" />
+                <img src="/images/mastercard.svg" alt="Mastercard" className="h-11" />
+                <img src="/images/amex.svg" alt="American Express" className="h-11" />
               </div>
             )}
           </div>

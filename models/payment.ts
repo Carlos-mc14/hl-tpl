@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb"
-import { getDb } from "@/lib/db"
+import { getDb } from "@/lib/mongodb"
+import { invalidateCache, invalidateCachePattern } from "@/lib/cache"
 
 export type PaymentStatus = "Pending" | "Completed" | "Failed" | "Refunded" | "Partial"
 export type PaymentMethod = "PayU" | "Cash" | "CreditCard" | "BankTransfer"
@@ -53,6 +54,10 @@ export async function updatePayment(id: string, paymentData: Partial<Payment>) {
 
   const result = await db.collection("payments").updateOne({ _id: new ObjectId(id) }, { $set: updateData })
 
+  // Invalidate cache
+  await invalidateCache(`payment:${id}`)
+  await invalidateCachePattern("payments:*")
+
   return result.modifiedCount > 0
 }
 
@@ -62,6 +67,12 @@ export async function updateReservationPaymentStatus(reservationId: string, stat
   const result = await db
     .collection("reservations")
     .updateOne({ _id: new ObjectId(reservationId) }, { $set: { paymentStatus: status, updatedAt: new Date() } })
+
+  // Invalidate cache for this reservation
+  await invalidateCache(`reservation:${reservationId}`)
+  await invalidateCache(`reservationWithDetails:${reservationId}`)
+  await invalidateCachePattern("reservations:*")
+  await invalidateCachePattern("reservationsWithDetails:*")
 
   return result.modifiedCount > 0
 }
@@ -99,6 +110,19 @@ export async function calculateReservationPaymentStatus(reservationId: string) {
 
   // Update reservation payment status
   await updateReservationPaymentStatus(reservationId, paymentStatus)
+
+  // Also update the reservation status to Confirmed if it was Pending
+  if (reservation.status === "Pending") {
+    await db
+      .collection("reservations")
+      .updateOne({ _id: new ObjectId(reservationId) }, { $set: { status: "Confirmed", updatedAt: new Date() } })
+  }
+
+  // Invalidate cache
+  await invalidateCache(`reservation:${reservationId}`)
+  await invalidateCache(`reservationWithDetails:${reservationId}`)
+  await invalidateCachePattern("reservations:*")
+  await invalidateCachePattern("reservationsWithDetails:*")
 
   return {
     totalPrice: reservation.totalPrice,

@@ -4,7 +4,7 @@ import { getReservationById } from "@/models/reservation"
 import { createPaymentRequest, processPayment, generateReferenceCode } from "@/lib/payu"
 import { getCurrentUser } from "@/lib/session"
 import { ObjectId } from "mongodb"
-import { getDb } from "@/lib/db"
+import { getDb } from "@/lib/mongodb"
 
 // Modificar la función para mejorar el manejo de reservas temporales
 export async function POST(request: Request) {
