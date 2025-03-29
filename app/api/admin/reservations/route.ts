@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getReservationsWithDetails, getReservationsByDateRange } from "@/models/reservation"
-import { getCurrentUser } from "@/lib/session"
 import { checkPermission } from "@/lib/permissions"
+import { getCurrentUser } from "@/lib/session"
 import { invalidateCachePattern } from "@/lib/cache"
 
 export async function GET(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check permissions
-    const canViewReservations = await checkPermission(user.id, "view:reservations") || user.role === "Administrator"
+    const canViewReservations = checkPermission(user.id, "view:reservations") || user.role === "Administrator"
     if (!canViewReservations) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 })
     }
@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
+    const status = searchParams.get("status")
 
     // Invalidate cache to ensure fresh data
     await invalidateCachePattern("reservations:*")
@@ -38,11 +39,21 @@ export async function GET(request: NextRequest) {
       }
 
       const reservations = await getReservationsByDateRange(start, end)
+
+      // Log the number of reservations found for debugging
+      console.log(
+        `Found ${reservations.length} reservations between ${start.toISOString()} and ${end.toISOString()}${status ? ` with status ${status}` : ""}`,
+      )
+
       return NextResponse.json(reservations)
     }
 
     // Otherwise, get all reservations
     const reservations = await getReservationsWithDetails()
+
+    // Log the number of reservations found for debugging
+    console.log(`Found ${reservations.length} reservations${status ? ` with status ${status}` : ""}`)
+
     return NextResponse.json(reservations)
   } catch (error: any) {
     console.error("Error fetching reservations:", error)

@@ -63,10 +63,10 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
   useEffect(() => {
     fetchReservations()
 
-    // Set up an interval to refresh data every 30 seconds
+    // Set up an interval to refresh data every 15 seconds
     const intervalId = setInterval(() => {
       fetchReservations(false) // Silent refresh (no loading indicator)
-    }, 30000)
+    }, 15000)
 
     return () => clearInterval(intervalId)
   }, [activeTab, refreshTrigger])
@@ -116,6 +116,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
       }
 
       const data = await response.json()
+      console.log(`Loaded ${data.length} reservations for ${activeTab}`)
       setReservations(data)
       setFilteredReservations(data)
     } catch (err) {
@@ -207,6 +208,8 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         return <Badge className="bg-yellow-500">Pendiente</Badge>
       case "No-show":
         return <Badge className="bg-red-700">No se presentó</Badge>
+      case "Conflict":
+        return <Badge className="bg-purple-500">Conflicto</Badge>
       default:
         return <Badge>{status}</Badge>
     }

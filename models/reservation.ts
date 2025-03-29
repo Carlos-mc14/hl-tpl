@@ -48,7 +48,7 @@ export interface ReservationWithDetails extends Reservation {
 }
 
 // Generate a random confirmation code
-function generateConfirmationCode(): string {
+export function generateConfirmationCode(): string {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
   let code = ""
   for (let i = 0; i < 8; i++) {

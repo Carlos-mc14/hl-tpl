@@ -17,9 +17,9 @@ export async function generateMetadata() {
     description: siteConfig.seo.metaDescription,
     keywords: siteConfig.seo.keywords.split(",").map((keyword: string) => keyword.trim()),
     icons: {
-      icon: siteConfig.favicon || "/favicon.ico",
-      shortcut: siteConfig.favicon || "/favicon.ico",
-      apple: siteConfig.favicon || "/favicon.ico",
+      icon: siteConfig.favicon,
+      shortcut: siteConfig.favicon,
+      apple: siteConfig.favicon,
     },
   }
 }

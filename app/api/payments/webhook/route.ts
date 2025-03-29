@@ -112,20 +112,84 @@ export async function POST(request: Request) {
             _id: new ObjectId(tempReservation.roomTypeId),
           })
 
-          // Buscar una habitación disponible del tipo seleccionado
-          const availableRoom = await db.collection("rooms").findOne({
-            roomTypeId: tempReservation.roomTypeId,
-            status: "Available",
-          })
+          // Verificar disponibilidad nuevamente antes de crear la reserva permanente
+          const checkIn = new Date(tempReservation.checkInDate)
+          const checkOut = new Date(tempReservation.checkOutDate)
 
-          if (!availableRoom) {
-            console.error("No available room found for reservation")
-            // Aún así continuamos, pero marcamos la reserva como pendiente de asignación
+          // Obtener todas las habitaciones de este tipo
+          const rooms = await db.collection("rooms").find({ roomTypeId: tempReservation.roomTypeId }).toArray()
+
+          // Obtener todas las reservas activas que se solapan con las fechas solicitadas
+          const reservations = await db
+            .collection("reservations")
+            .find({
+              roomId: { $in: rooms.map((room) => room._id.toString()) },
+              status: { $in: ["Confirmed", "Checked-in", "Pending"] },
+              $or: [
+                // Caso 1: La reserva existente comienza antes y termina durante la nueva reserva
+                { checkInDate: { $lt: checkOut }, checkOutDate: { $gt: checkIn } },
+                // Caso 2: La reserva existente comienza durante la nueva reserva
+                { checkInDate: { $gte: checkIn, $lt: checkOut } },
+                // Caso 3: La reserva existente abarca completamente la nueva reserva
+                { checkInDate: { $lte: checkIn }, checkOutDate: { $gte: checkOut } },
+              ],
+            })
+            .toArray()
+
+          // Contar cuántas habitaciones están ocupadas para esas fechas
+          const occupiedRoomIds = new Set(reservations.map((res) => res.roomId))
+
+          // Buscar una habitación disponible
+          const availableRooms = rooms.filter((room) => !occupiedRoomIds.has(room._id.toString()))
+
+          if (availableRooms.length === 0) {
+            console.error("No available rooms found for reservation - all rooms are booked")
+
+            // Enviar correo de notificación al administrador
+            try {
+              await sendEmail({
+                to: "admin@hotelmanager.com", // Cambiar por el correo del administrador
+                subject: "ALERTA: Conflicto de reserva - Hotel Manager",
+                text: `
+                Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
+                pero no hay habitaciones disponibles para las fechas solicitadas.
+                
+                Referencia de pago: ${paymentData.referenceCode}
+                Monto: ${paymentData.amount} ${paymentData.currency}
+                
+                Por favor, contacte al cliente para resolver esta situación.
+                `,
+                html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h1 style="color: #d32f2f;">ALERTA: Conflicto de reserva</h1>
+                  <p>Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
+                  pero no hay habitaciones disponibles para las fechas solicitadas.</p>
+                  
+                  <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p><strong>Detalles del pago:</strong></p>
+                    <p>Referencia: ${paymentData.referenceCode}</p>
+                    <p>Monto: ${paymentData.amount} ${paymentData.currency}</p>
+                    <p>Estado: Completado</p>
+                  </div>
+                  
+                  <p>Por favor, contacte al cliente para resolver esta situación.</p>
+                </div>
+                `,
+              })
+            } catch (emailError) {
+              console.error("Error sending admin alert email:", emailError)
+            }
+
+            // Continuar con la creación de la reserva pero marcarla como "Conflicto"
+            // para que el administrador la resuelva manualmente
           }
+
+          // Seleccionar una habitación disponible o marcar como pendiente de asignación
+          const selectedRoom = availableRooms.length > 0 ? availableRooms[0] : null
 
           // Crear una reserva permanente a partir de la temporal
           const permanentReservation = {
-            roomId: availableRoom ? availableRoom._id.toString() : "pending-assignment",
+            roomId: selectedRoom ? selectedRoom._id.toString() : "pending-assignment",
             userId: undefined, // Usuario no registrado
             guest: tempReservation.guest,
             checkInDate: tempReservation.checkInDate,
@@ -133,7 +197,7 @@ export async function POST(request: Request) {
             adults: tempReservation.adults,
             children: tempReservation.children,
             totalPrice: tempReservation.totalPrice,
-            status: "Confirmed" as ReservationStatus,
+            status: selectedRoom ? "Confirmed" : ("Conflict" as ReservationStatus),
             paymentStatus:
               payment.type === "Full"
                 ? ("Paid" as "Pending" | "Partial" | "Paid")
@@ -144,6 +208,7 @@ export async function POST(request: Request) {
             metadata: {
               originalTempId: payment.metadata.originalTempId,
               paymentId: payment._id.toString(),
+              needsRoomAssignment: selectedRoom ? false : true,
             },
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -166,10 +231,10 @@ export async function POST(request: Request) {
           )
 
           // Actualizar el estado de la habitación si se asignó una
-          if (availableRoom) {
+          if (selectedRoom) {
             await db
               .collection("rooms")
-              .updateOne({ _id: availableRoom._id }, { $set: { status: "Reserved", updatedAt: new Date() } })
+              .updateOne({ _id: selectedRoom._id }, { $set: { status: "Reserved", updatedAt: new Date() } })
           }
 
           // Recalcular el estado del pago de la reserva
@@ -178,6 +243,8 @@ export async function POST(request: Request) {
           // Invalidar caché relacionada con reservaciones
           await invalidateCachePattern("reservations:*")
           await invalidateCachePattern("reservationsWithDetails:*")
+          await invalidateCachePattern("roomTypes:*")
+          await invalidateCachePattern("availability:*")
 
           // Enviar correo de confirmación al cliente
           try {
