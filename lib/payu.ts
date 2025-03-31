@@ -333,7 +333,7 @@ export function createPaymentRequest(
   // Crear objeto de parámetros extra
   const extraParameters: Record<string, string> = {
     RESPONSE_URL: redirectUrls.returnUrl,
-    CONFIRMATION_URL: `${process.env.NEXTAUTH_URL}/api/payments/webhook`,
+    CONFIRMATION_URL: `${process.env.NEXTAUTH_URL || "https://hotel.nexius.lat"}/api/payments/webhook`,
   }
 
   // Añadir OTP para pagos con Yape

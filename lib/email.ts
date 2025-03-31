@@ -16,9 +16,12 @@ type EmailData = {
   html: string
 }
 
+// Mejorar el manejo de errores en la función sendEmail
 export async function sendEmail({ to, subject, text, html }: EmailData) {
   if (!process.env.SENDGRID_API_KEY) {
     console.error("SendGrid API key not set. Cannot send email.")
+    // Registrar el intento de envío para depuración
+    console.log("Email that would have been sent:", { to, subject, text })
     return { success: false, error: "SendGrid API key not set" }
   }
 
