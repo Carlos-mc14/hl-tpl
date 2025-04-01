@@ -175,6 +175,12 @@ export default function ReservationForm({ roomTypes, availableRooms, selectedRoo
     setIsLoading(true)
 
     try {
+      // In a real app, you would submit to an API endpoint
+      // For now, we'll simulate a successful reservation
+
+      // Simulate API delay
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
       // Get the selected room type details
       const selectedRoomType = roomTypes.find((type) => type._id.toString() === formData.roomTypeId)
 
@@ -184,47 +190,22 @@ export default function ReservationForm({ roomTypes, availableRooms, selectedRoo
       const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
       const totalPrice = selectedRoomType ? selectedRoomType.basePrice * nights : 0
 
-      // Crear una reserva temporal en el servidor
-      const response = await fetch("/api/reservations/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          roomTypeId: formData.roomTypeId,
-          checkInDate: formData.checkInDate,
-          checkOutDate: formData.checkOutDate,
-          adults: formData.adults,
-          children: formData.children,
-          totalPrice: totalPrice,
-          guest: {
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            email: formData.email,
-            phone: formData.phone,
-          },
-          specialRequests: formData.specialRequests,
-          isTemporary: true,
-        }),
-      })
+      // Generate a random confirmation code
+      const confirmationCode = Math.random().toString(36).substring(2, 10).toUpperCase()
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Error creating reservation")
-      }
-
-      const data = await response.json()
-      console.log("Reservation created:", data)
+      // Generate a temporary reservation ID (for demo purposes)
+      // In a real app, this would be a MongoDB ObjectId from the database
+      const tempReservationId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
 
       // Store reservation details in session storage for the payment page
       sessionStorage.setItem(
         "reservation",
         JSON.stringify({
           ...formData,
-          reservationId: data.reservationId, // Use the real ID from the server
+          reservationId: tempReservationId, // Add this temporary ID
           nights,
           totalPrice,
-          confirmationCode: data.confirmationCode,
+          confirmationCode,
           roomTypeName: selectedRoomType?.name,
           roomNumber: availableRoomsForDates[0].number,
         }),
@@ -233,10 +214,9 @@ export default function ReservationForm({ roomTypes, availableRooms, selectedRoo
       // Redirect to payment page
       router.push("/reservations/payment")
     } catch (error) {
-      console.error("Error creating reservation:", error)
       toast({
         title: "Error creating reservation",
-        description: error instanceof Error ? error.message : "An error occurred while creating your reservation",
+        description: "An error occurred while creating your reservation",
         variant: "destructive",
       })
     } finally {

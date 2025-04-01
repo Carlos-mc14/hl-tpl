@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     )
 
     // Invalidar caché relacionada con pagos
-    await invalidateCache(`payment:${payment._id.toString()}`)
+    await invalidateCache(`payment:${payment._id}`)
     await invalidateCachePattern("payments:*")
 
     // Si el pago es para una reserva temporal y está completado, convertirla en permanente
@@ -161,33 +161,33 @@ export async function POST(request: Request) {
             // Enviar correo de notificación al administrador
             try {
               await sendEmail({
-                to: process.env.ADMIN_EMAIL || "admin@hotelmanager.com",
+                to: "admin@hotelmanager.com", // Cambiar por el correo del administrador
                 subject: "ALERTA: Conflicto de reserva - Hotel Manager",
                 text: `
-          Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
-          pero no hay habitaciones disponibles para las fechas solicitadas.
-          
-          Referencia de pago: ${paymentData.referenceCode}
-          Monto: ${paymentData.amount} ${paymentData.currency}
-          
-          Por favor, contacte al cliente para resolver esta situación.
-          `,
+                Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
+                pero no hay habitaciones disponibles para las fechas solicitadas.
+                
+                Referencia de pago: ${paymentData.referenceCode}
+                Monto: ${paymentData.amount} ${paymentData.currency}
+                
+                Por favor, contacte al cliente para resolver esta situación.
+                `,
                 html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #d32f2f;">ALERTA: Conflicto de reserva</h1>
-            <p>Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
-            pero no hay habitaciones disponibles para las fechas solicitadas.</p>
-            
-            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <p><strong>Detalles del pago:</strong></p>
-              <p>Referencia: ${paymentData.referenceCode}</p>
-              <p>Monto: ${paymentData.amount} ${paymentData.currency}</p>
-              <p>Estado: Completado</p>
-            </div>
-            
-            <p>Por favor, contacte al cliente para resolver esta situación.</p>
-          </div>
-          `,
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h1 style="color: #d32f2f;">ALERTA: Conflicto de reserva</h1>
+                  <p>Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
+                  pero no hay habitaciones disponibles para las fechas solicitadas.</p>
+                  
+                  <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p><strong>Detalles del pago:</strong></p>
+                    <p>Referencia: ${paymentData.referenceCode}</p>
+                    <p>Monto: ${paymentData.amount} ${paymentData.currency}</p>
+                    <p>Estado: Completado</p>
+                  </div>
+                  
+                  <p>Por favor, contacte al cliente para resolver esta situación.</p>
+                </div>
+                `,
               })
             } catch (emailError) {
               console.error("Error sending admin alert email:", emailError)
@@ -219,7 +219,7 @@ export async function POST(request: Request) {
             specialRequests: tempReservation.specialRequests,
             confirmationCode: tempReservation.confirmationCode,
             metadata: {
-              originalTempId: payment.metadata.originalTempId || tempReservation._id.toString(),
+              originalTempId: payment.metadata.originalTempId,
               paymentId: payment._id.toString(),
               needsRoomAssignment: selectedRoom ? false : true,
             },
@@ -273,22 +273,22 @@ Fecha de salida: ${new Date(tempReservation.checkOutDate).toLocaleDateString()}
 
 Gracias por su preferencia.`,
               html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #333;">Confirmación de Reserva</h1>
-          <p>Estimado/a ${tempReservation.guest.firstName},</p>
-          <p>Su reserva ha sido confirmada con el código <strong>${tempReservation.confirmationCode}</strong>.</p>
-          <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p><strong>Detalles de la reserva:</strong></p>
-            <p>Tipo de habitación: ${roomType ? roomType.name : "No especificado"}</p>
-            <p>Fecha de llegada: ${new Date(tempReservation.checkInDate).toLocaleDateString()}</p>
-            <p>Fecha de salida: ${new Date(tempReservation.checkOutDate).toLocaleDateString()}</p>
-            <p>Huéspedes: ${tempReservation.adults} adultos, ${tempReservation.children} niños</p>
-            <p>Estado del pago: ${payment.type === "Full" ? "Pagado completamente" : "Pago parcial"}</p>
-          </div>
-          <p>Gracias por su preferencia.</p>
-          <p>Atentamente,<br>El equipo de Hotel Manager</p>
-        </div>
-      `,
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #333;">Confirmación de Reserva</h1>
+                <p>Estimado/a ${tempReservation.guest.firstName},</p>
+                <p>Su reserva ha sido confirmada con el código <strong>${tempReservation.confirmationCode}</strong>.</p>
+                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                  <p><strong>Detalles de la reserva:</strong></p>
+                  <p>Tipo de habitación: ${roomType ? roomType.name : "No especificado"}</p>
+                  <p>Fecha de llegada: ${new Date(tempReservation.checkInDate).toLocaleDateString()}</p>
+                  <p>Fecha de salida: ${new Date(tempReservation.checkOutDate).toLocaleDateString()}</p>
+                  <p>Huéspedes: ${tempReservation.adults} adultos, ${tempReservation.children} niños</p>
+                  <p>Estado del pago: ${payment.type === "Full" ? "Pagado completamente" : "Pago parcial"}</p>
+                </div>
+                <p>Gracias por su preferencia.</p>
+                <p>Atentamente,<br>El equipo de Hotel Manager</p>
+              </div>
+            `,
             })
             console.log("Confirmation email sent to", tempReservation.guest.email)
           } catch (emailError) {
@@ -311,19 +311,6 @@ Gracias por su preferencia.`,
         }
       } else {
         console.error("Temporary reservation not found:", payment.reservationId)
-
-        // Intentar buscar por referencia en caso de que el ID no coincida
-        if (payment.metadata && payment.metadata.referenceCode) {
-          const tempReservationByRef = await db.collection("temporaryReservations").findOne({
-            "metadata.referenceCode": payment.metadata.referenceCode,
-          })
-
-          if (tempReservationByRef) {
-            console.log("Found temporary reservation by reference code:", tempReservationByRef._id)
-            // Procesar esta reserva temporal (código similar al bloque anterior)
-            // Aquí podrías duplicar la lógica o extraerla a una función
-          }
-        }
       }
     } else if (!payment.metadata?.isTemporary && paymentData.status === "Completed") {
       // Para reservas normales (no temporales), actualizar el estado del pago

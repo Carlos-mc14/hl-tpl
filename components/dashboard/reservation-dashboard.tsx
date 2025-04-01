@@ -19,6 +19,7 @@ import {
   MoreHorizontal,
   Clock,
   AlertCircle,
+  Plus,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -31,6 +32,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { toast } from "@/components/ui/use-toast"
 import { ReservationDetailsDialog } from "@/components/dashboard/reservation-details-dialog"
+import { ReservationCreateDialog } from "@/components/dashboard/reservation-create-dialog"
 
 interface DateRange {
   label: string
@@ -57,8 +59,10 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
   const [reservations, setReservations] = useState<any[]>([])
   const [filteredReservations, setFilteredReservations] = useState<any[]>([])
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<any>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [forceRefresh, setForceRefresh] = useState(0)
 
   // Función de actualización mejorada
   const fetchReservations = useCallback(
@@ -133,7 +137,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         }
       }
     },
-    [activeTab, dateRanges],
+    [activeTab, dateRanges, forceRefresh],
   )
 
   // Cargar reservaciones según el período seleccionado
@@ -235,6 +239,15 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     }
   }
 
+  const handleReservationCreated = () => {
+    // Actualizar la lista de reservaciones después de crear una nueva
+    setRefreshTrigger((prev) => prev + 1)
+    toast({
+      title: "Reservación creada",
+      description: "La reservación ha sido creada exitosamente.",
+    })
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Confirmed":
@@ -271,6 +284,14 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold tracking-tight">Reservaciones</h2>
+        <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Nueva Reservación
+        </Button>
+      </div>
+
       <Tabs defaultValue="today" value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <TabsList>
@@ -298,6 +319,14 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
               disabled={isRefreshing}
             >
               {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setForceRefresh((prev) => prev + 1)}
+              disabled={isLoading}
+            >
+              <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -372,6 +401,12 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
           onCheckOut={() => handleCheckOut(selectedReservation._id)}
         />
       )}
+
+      <ReservationCreateDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onReservationCreated={handleReservationCreated}
+      />
     </div>
   )
 }

@@ -64,7 +64,19 @@ export async function GET(request: NextRequest) {
     const reservations = await db.collection("reservations").find(query).sort({ checkInDate: 1 }).toArray()
 
     // Log the number of reservations found for debugging
-    console.log(`Found ${reservations.length} reservations with query:`, JSON.stringify(query))
+    //console.log(`Found ${reservations.length} reservations with query:`, JSON.stringify(query))
+
+    // Log the reservations for debugging
+    /*console.log(
+      "Reservations details:",
+      reservations.map((r) => ({
+        id: r._id.toString(),
+        status: r.status,
+        checkIn: r.checkInDate,
+        checkOut: r.checkOutDate,
+        guest: r.guest.firstName + " " + r.guest.lastName,
+      })),
+    )*/
 
     // Get room details for all reservations
     const roomIds = reservations

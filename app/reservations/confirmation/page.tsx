@@ -108,6 +108,7 @@ export default function ConfirmationPage() {
 
     try {
       const parsedData = JSON.parse(reservationData)
+      console.log("Datos de reserva recuperados:", parsedData)
 
       // Check if payment was completed
       if (paymentId) {
@@ -120,6 +121,8 @@ export default function ConfirmationPage() {
             return response.json()
           })
           .then((data) => {
+            console.log("Datos de pago recuperados:", data)
+
             // Usar los datos de la reserva temporal si están disponibles
             if (data.isTemporary && data.tempReservationData) {
               const tempData = data.tempReservationData

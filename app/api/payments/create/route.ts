@@ -5,6 +5,7 @@ import { createPaymentRequest, processPayment, generateReferenceCode } from "@/l
 import { getCurrentUser } from "@/lib/session"
 import { ObjectId } from "mongodb"
 import { getDb } from "@/lib/mongodb"
+import { invalidateCachePattern } from "@/lib/redis"
 
 // Modificar la función para mejorar el manejo de reservas temporales
 export async function POST(request: Request) {
@@ -295,6 +296,75 @@ export async function POST(request: Request) {
               },
             },
           )
+
+          // Si es una reserva temporal, convertirla en permanente
+          if (isTemporaryId) {
+            try {
+              // Obtener la reserva temporal
+              const tempReservation = await db.collection("temporaryReservations").findOne({
+                _id: new ObjectId(actualReservationId),
+              })
+
+              if (tempReservation) {
+                // Buscar una habitación disponible
+                const roomType = await db.collection("roomTypes").findOne({
+                  _id: new ObjectId(tempReservation.roomTypeId),
+                })
+
+                if (roomType) {
+                  const rooms = await db.collection("rooms").find({ roomTypeId: tempReservation.roomTypeId }).toArray()
+
+                  // Verificar disponibilidad
+                  const availableRoom = rooms.find((room) => room.status === "Available")
+
+                  if (availableRoom) {
+                    // Crear reserva permanente
+                    const permanentReservation = {
+                      roomId: availableRoom._id.toString(),
+                      userId: user ? user.id : undefined,
+                      guest: tempReservation.guest,
+                      checkInDate: tempReservation.checkInDate,
+                      checkOutDate: tempReservation.checkOutDate,
+                      adults: tempReservation.adults,
+                      children: tempReservation.children,
+                      totalPrice: tempReservation.totalPrice,
+                      status: "Confirmed",
+                      paymentStatus: "Paid",
+                      paymentMethod: paymentMethod,
+                      specialRequests: tempReservation.specialRequests,
+                      confirmationCode: tempReservation.confirmationCode,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    }
+
+                    // Guardar la reserva permanente
+                    const result = await db.collection("reservations").insertOne(permanentReservation)
+
+                    // Actualizar el estado de la habitación
+                    await db
+                      .collection("rooms")
+                      .updateOne({ _id: availableRoom._id }, { $set: { status: "Reserved", updatedAt: new Date() } })
+
+                    // Eliminar la reserva temporal
+                    await db.collection("temporaryReservations").deleteOne({
+                      _id: new ObjectId(actualReservationId),
+                    })
+
+                    // Invalidar caché
+                    await invalidateCachePattern("reservations:*")
+                    await invalidateCachePattern("reservationsWithDetails:*")
+                    await invalidateCachePattern("roomTypes:*")
+                    await invalidateCachePattern("availability:*")
+
+                    console.log("Reserva temporal convertida a permanente:", result.insertedId)
+                  }
+                }
+              }
+            } catch (conversionError) {
+              console.error("Error al convertir reserva temporal a permanente:", conversionError)
+              // Continuar aunque falle la conversión
+            }
+          }
         }
 
         // Return the PayU response with payment URL
