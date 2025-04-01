@@ -183,6 +183,7 @@ export async function updateRoom(id: string, roomData: Partial<Room>) {
     await invalidateCache(`room:${id}`)
     await invalidateCache(`roomWithType:${id}`)
     await invalidateCachePattern("rooms:*")
+    await invalidateCachePattern("roomsWithType:*")
 
     return result.modifiedCount > 0
   } finally {
@@ -343,4 +344,3 @@ export async function initializeRooms() {
     releaseConnection()
   }
 }
-

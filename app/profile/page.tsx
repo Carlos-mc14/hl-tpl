@@ -318,19 +318,30 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
   // Calculate number of nights
   const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
 
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "PEN",
+    }).format(amount)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-xl">
-              {reservation.room?.roomType || "Room"} - {reservation.confirmationCode}
+              {reservation.room?.roomType || "Room"}
+              {reservation.confirmationCode && ` - ${reservation.confirmationCode}`}
             </CardTitle>
             <CardDescription>
-              {reservation.room?.number ? `Room ${reservation.room.number}` : "Room details unavailable"}
+              {reservation.room?.number
+                ? `Room ${reservation.room.number}`
+                : "Room details will be assigned at check-in"}
             </CardDescription>
           </div>
-          <div className="flex space-x-2">
+          <div className="flex flex-wrap gap-2">
             {getStatusBadge(reservation.status)}
             {getPaymentStatusBadge(reservation.paymentStatus)}
           </div>
@@ -369,7 +380,7 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
             </div>
             <div className="flex items-center">
               <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
-              <span className="text-sm">${reservation.totalPrice.toFixed(2)}</span>
+              <span className="text-sm font-medium">{formatCurrency(reservation.totalPrice)}</span>
             </div>
           </div>
         </div>
@@ -395,30 +406,30 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
 function getStatusBadge(status: string) {
   switch (status) {
     case "Confirmed":
-      return <Badge className="bg-green-500">Confirmed</Badge>
+      return <Badge className="bg-green-500 text-white">Confirmed</Badge>
     case "Checked-in":
-      return <Badge className="bg-blue-500">Checked-in</Badge>
+      return <Badge className="bg-blue-500 text-white">Checked-in</Badge>
     case "Checked-out":
-      return <Badge className="bg-gray-500">Checked-out</Badge>
+      return <Badge className="bg-gray-500 text-white">Checked-out</Badge>
     case "Cancelled":
-      return <Badge className="bg-red-500">Cancelled</Badge>
+      return <Badge className="bg-red-500 text-white">Cancelled</Badge>
     case "No-show":
-      return <Badge className="bg-amber-500">No-show</Badge>
+      return <Badge className="bg-amber-500 text-white">No-show</Badge>
     default:
-      return <Badge>{status}</Badge>
+      return <Badge>{status || "Unknown"}</Badge>
   }
 }
 
 function getPaymentStatusBadge(status: string) {
   switch (status) {
     case "Paid":
-      return <Badge className="bg-green-500">Paid</Badge>
+      return <Badge className="bg-green-500 text-white">Paid</Badge>
     case "Partial":
-      return <Badge className="bg-amber-500">Partial</Badge>
+      return <Badge className="bg-amber-500 text-white">Partial</Badge>
     case "Pending":
-      return <Badge className="bg-red-500">Pending</Badge>
+      return <Badge className="bg-red-500 text-white">Pending</Badge>
     default:
-      return <Badge>{status}</Badge>
+      return <Badge>{status || "Unknown"}</Badge>
   }
 }
 

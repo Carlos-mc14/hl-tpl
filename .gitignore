@@ -23,4 +23,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+#zip
+*.zip
+
 README.md

@@ -84,16 +84,23 @@ export function RoomStatusDialog({ open, onOpenChange, room, onRoomUpdated }: Ro
         throw new Error(errorData.message || "Failed to update room status")
       }
 
+      const responseData = await response.json()
+
       toast({
         title: "Status updated",
         description: `Room ${room.number} status has been updated to ${status}.`,
       })
 
-      // Get the updated room data
-      const updatedRoomResponse = await fetch(`/api/admin/rooms/${room._id}?withType=true`)
-      if (updatedRoomResponse.ok) {
-        const updatedRoom = await updatedRoomResponse.json()
-        if (onRoomUpdated) onRoomUpdated(updatedRoom)
+      // Use the room data from the response if available
+      if (responseData.room && onRoomUpdated) {
+        onRoomUpdated(responseData.room)
+      } else {
+        // Fallback to fetching the updated room data
+        const updatedRoomResponse = await fetch(`/api/admin/rooms/${room._id}?withType=true`)
+        if (updatedRoomResponse.ok) {
+          const updatedRoom = await updatedRoomResponse.json()
+          if (onRoomUpdated) onRoomUpdated(updatedRoom)
+        }
       }
 
       // Close the dialog

@@ -25,9 +25,12 @@ export async function getCachedData<T>(
           // Intentar parsear como JSON
           return JSON.parse(cachedData) as T
         } catch (parseError) {
-          // Si no se puede parsear, devolver el valor como está
-          console.warn(`No se pudo parsear el valor en caché para ${key}, usando valor sin parsear`)
-          return cachedData as unknown as T
+          // Si no se puede parsear, registrar el error y obtener datos frescos
+          console.warn(`No se pudo parsear el valor en caché para ${key}, obteniendo datos frescos`, parseError)
+          // Invalidar la caché corrupta
+          await redis.del(key)
+          // Obtener datos frescos
+          return fetchFn()
         }
       } else {
         // Si ya es un objeto, devolverlo directamente
@@ -38,13 +41,19 @@ export async function getCachedData<T>(
     // Si no están en caché, obtenerlos usando la función proporcionada
     const freshData = await fetchFn()
 
-    try {
-      // Guardar los datos en caché
-      // Asegurarse de que se guarda como string JSON
-      await redis.set(key, JSON.stringify(freshData), { ex: ttl })
-    } catch (setError) {
-      console.error(`Error al guardar en caché para la clave ${key}:`, setError)
-      // Continuar aunque haya error al guardar en caché
+    // Verificar que los datos sean serializables antes de guardarlos en caché
+    if (freshData && typeof freshData === "object") {
+      try {
+        // Probar la serialización antes de guardar
+        const serialized = JSON.stringify(freshData)
+        // Guardar los datos en caché
+        await redis.set(key, serialized, { ex: ttl })
+      } catch (setError) {
+        console.error(`Error al guardar en caché para la clave ${key}:`, setError)
+        // Continuar aunque haya error al guardar en caché
+      }
+    } else {
+      console.warn(`Datos no serializables para la clave ${key}, no se guardarán en caché`)
     }
 
     return freshData
@@ -71,7 +80,7 @@ export async function invalidateCache(key: string): Promise<void> {
  * Invalida múltiples claves de caché que coinciden con un patrón
  * @param pattern Patrón para las claves a invalidar (ej: "user:*")
  */
-export async function invalidateCachePattern(pattern: string): Promise<void> {
+export async function invalidateCachePattern(pattern: string) {
   try {
     const keys = await redis.keys(pattern)
     if (keys && keys.length > 0) {

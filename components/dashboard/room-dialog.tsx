@@ -149,16 +149,23 @@ export function RoomDialog({ open, onOpenChange, room, roomTypes, onRoomUpdated,
           throw new Error(errorData.message || "Failed to update room")
         }
 
+        const responseData = await response.json()
+
         toast({
           title: "Success",
           description: "Room updated successfully",
         })
 
-        // Get the updated room data
-        const updatedRoomResponse = await fetch(`/api/admin/rooms/${room._id}?withType=true`)
-        if (updatedRoomResponse.ok) {
-          const updatedRoom = await updatedRoomResponse.json()
-          if (onRoomUpdated) onRoomUpdated(updatedRoom)
+        // Use the room data from the response if available
+        if (responseData.room && onRoomUpdated) {
+          onRoomUpdated(responseData.room)
+        } else {
+          // Fallback to fetching the updated room data
+          const updatedRoomResponse = await fetch(`/api/admin/rooms/${room._id}?withType=true`)
+          if (updatedRoomResponse.ok) {
+            const updatedRoom = await updatedRoomResponse.json()
+            if (onRoomUpdated) onRoomUpdated(updatedRoom)
+          }
         }
       } else {
         // Create new room

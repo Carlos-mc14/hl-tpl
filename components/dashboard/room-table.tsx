@@ -100,7 +100,9 @@ export function RoomTable() {
     setIsLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/admin/rooms?withType=true")
+      // Añadir un parámetro de timestamp para evitar la caché del navegador
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/admin/rooms?withType=true&t=${timestamp}`)
       if (!response.ok) {
         throw new Error("Failed to fetch rooms")
       }
