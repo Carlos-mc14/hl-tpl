@@ -34,6 +34,10 @@ export async function POST(request: Request) {
     }
 
     console.log("PayU webhook received:", JSON.stringify(body))
+    console.log(
+      "Transaction state:",
+      body.transaction?.state || body.transactionResponse?.state || body.state_pol || "unknown",
+    )
 
     // Verificar si es una notificación en formato nuevo (JSON) o antiguo (form data)
     let paymentData
@@ -46,6 +50,16 @@ export async function POST(request: Request) {
         amount: Number.parseFloat(body.transaction.order.additionalValues?.TX_VALUE?.value || "0"),
         currency: body.transaction.order.additionalValues?.TX_VALUE?.currency || "PEN",
         status: mapTransactionStatus(body.transaction.state),
+      }
+    }
+    // Formato de respuesta directa de la API
+    else if (body.transactionResponse && body.transactionResponse.state) {
+      paymentData = {
+        transactionId: body.transactionResponse.transactionId || "",
+        referenceCode: body.reference_sale || body.order?.referenceCode || "",
+        amount: Number.parseFloat(body.order?.additionalValues?.TX_VALUE?.value || "0"),
+        currency: body.order?.additionalValues?.TX_VALUE?.currency || "PEN",
+        status: mapTransactionStatus(body.transactionResponse.state),
       }
     }
     // Formato antiguo (form data)
@@ -386,13 +400,18 @@ Gracias por su preferencia.`,
 
 // Función auxiliar para mapear estados de transacción de PayU
 function mapTransactionStatus(state: string): "Completed" | "Failed" | "Pending" {
+  if (!state) return "Pending"
+
   const stateUpper = state.toUpperCase()
+  console.log("Mapping transaction state:", stateUpper)
+
   switch (stateUpper) {
     case "APPROVED":
       return "Completed"
     case "DECLINED":
     case "EXPIRED":
     case "REJECTED":
+    case "ENTITY_DECLINED":
       return "Failed"
     default:
       return "Pending"

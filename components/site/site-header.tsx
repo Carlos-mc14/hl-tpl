@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Menu, X, ChevronDown, User } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Menu, X, ChevronDown, User, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   NavigationMenu,
@@ -13,14 +14,41 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
 import { cn } from "@/lib/utils"
+import { toast } from "@/components/ui/use-toast"
 
 interface SiteHeaderProps {
   siteConfig: any
 }
 
 export function SiteHeader({ siteConfig }: SiteHeaderProps) {
+  const router = useRouter()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  // Fetch user data
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const response = await fetch("/api/auth/me")
+        if (response.ok) {
+          const userData = await response.json()
+          setUser(userData)
+        } else {
+          setUser(null)
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserData()
+  }, [])
 
   // Handle scroll effect
   useEffect(() => {
@@ -31,6 +59,41 @@ export function SiteHeader({ siteConfig }: SiteHeaderProps) {
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  // Función para manejar el logout
+  const handleLogout = async () => {
+    try {
+      setLoggingOut(true)
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Logout successful",
+          description: "You have been logged out successfully.",
+        })
+        setUser(null)
+        // Forzar recarga para limpiar cualquier estado persistente
+        window.location.href = "/"
+      } else {
+        const data = await response.json()
+        throw new Error(data.message || "Logout failed")
+      }
+    } catch (err) {
+      console.error("Error during logout:", err)
+      toast({
+        title: "Logout failed",
+        description: "There was an error logging out. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   return (
     <header
@@ -183,19 +246,55 @@ export function SiteHeader({ siteConfig }: SiteHeaderProps) {
 
           {/* Action Buttons */}
           <div className="hidden lg:flex col-span-2 items-center justify-end space-x-2">
-            <Link href="/auth/login">
-              <Button
-                variant="ghost"
-                className={cn(
-                  isScrolled
-                    ? "text-foreground hover:bg-accent hover:text-accent-foreground"
-                    : "text-white hover:bg-white/10",
-                )}
-              >
-                <User className="h-5 w-5 mr-2" />
-                Login
-              </Button>
-            </Link>
+            {loading ? (
+              <div className="h-10 w-20 bg-gray-200 animate-pulse rounded"></div>
+            ) : user ? (
+              <div className="flex items-center space-x-2">
+                <Link href="/profile">
+                  <Button
+                    variant="ghost"
+                    className={cn(
+                      isScrolled
+                        ? "text-foreground hover:bg-accent hover:text-accent-foreground"
+                        : "text-white hover:bg-white/10",
+                    )}
+                  >
+                    <User className="h-5 w-5 mr-2" />
+                    {user.firstName}
+                  </Button>
+                </Link>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="flex items-center"
+                >
+                  {loggingOut ? (
+                    <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                  ) : (
+                    <>
+                      <LogOut className="h-4 w-4 mr-1" />
+                      Logout
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <Link href="/auth/login">
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    isScrolled
+                      ? "text-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "text-white hover:bg-white/10",
+                  )}
+                >
+                  <User className="h-5 w-5 mr-2" />
+                  Login
+                </Button>
+              </Link>
+            )}
 
             <Link href="/reservations">
               <Button
@@ -309,13 +408,35 @@ export function SiteHeader({ siteConfig }: SiteHeaderProps) {
               </Link>
 
               <div className="pt-2 mt-2 border-t flex flex-col space-y-2">
-                <Link
-                  href="/auth/login"
-                  className="px-4 py-2 text-sm font-medium rounded-md hover:bg-accent"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Login
-                </Link>
+                {user ? (
+                  <>
+                    <Link
+                      href="/profile"
+                      className="px-4 py-2 text-sm font-medium rounded-md hover:bg-accent"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      My Profile
+                    </Link>
+                    <button
+                      className="px-4 py-2 text-sm font-medium text-white rounded-md bg-red-500 hover:bg-red-600"
+                      onClick={async () => {
+                        setIsMenuOpen(false)
+                        await handleLogout()
+                      }}
+                      disabled={loggingOut}
+                    >
+                      {loggingOut ? "Logging out..." : "Logout"}
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/auth/login"
+                    className="px-4 py-2 text-sm font-medium rounded-md hover:bg-accent"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Login
+                  </Link>
+                )}
 
                 <Link
                   href="/reservations"

@@ -108,7 +108,11 @@ export async function POST(request: NextRequest) {
     // Obtener usuario actual (si está autenticado)
     const currentUser = await getCurrentUser()
 
-    if (isTemporary) {
+    // Determinar si la reserva debe ser temporal
+    // Si isTemporary es true o si no hay usuario autenticado, crear reserva temporal
+    const shouldBeTemporary = isTemporary || !currentUser
+
+    if (shouldBeTemporary) {
       // Crear reserva temporal (para usuarios no registrados)
       const expirationTime = new Date()
       expirationTime.setMinutes(expirationTime.getMinutes() + 30) // Expira en 30 minutos

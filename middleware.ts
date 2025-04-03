@@ -19,7 +19,9 @@ export async function middleware(request: NextRequest) {
     "/reservations",
     "/reservations/payment",
     "/reservations/confirmation",
-
+    "/amenities",
+    "/gallery",
+    "/contact",
   ]
 
   // API routes that don't require authentication
@@ -31,12 +33,15 @@ export async function middleware(request: NextRequest) {
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
     "/api/auth/logout",
-    "/api/user/reservations",
+    "/api/auth/me",
     "/api/init",
     "/api/debug/session",
     "/api/payments/check-config",
     "/api/payments/create",
     "/api/payments/status",
+    "/api/reservations/create",
+    "/api/availability/check",
+    "/api/site-config",
   ]
 
   // Check if the route is public
@@ -112,9 +117,12 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     // Token is invalid, redirect to login
     console.error("Auth error in middleware:", error)
-    const url = new URL("/auth/login", request.url)
-    url.searchParams.set("callbackUrl", pathname)
-    return NextResponse.redirect(url)
+
+    // Limpiar la cookie inválida
+    const response = NextResponse.redirect(new URL("/auth/login", request.url))
+    response.cookies.delete("auth-token")
+
+    return response
   }
 }
 
@@ -130,3 +138,4 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|public).*)",
   ],
 }
+

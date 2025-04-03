@@ -204,7 +204,7 @@ export function createPayUTransaction(data: {
   }
 
   // Si es tarjeta de crédito, añadir los datos de la tarjeta
-  if (data.paymentMethod === "VISA" || data.paymentMethod === "MASTERCARD") {
+  if (data.paymentMethod === "VISA" || data.paymentMethod === "MASTERCARD" || data.paymentMethod === "AMEX") {
     if (data.cardData) {
       transaction.creditCard = {
         number: data.cardData.number,
@@ -268,7 +268,7 @@ export async function sendTransactionToPayU(transaction: PayUTransaction): Promi
           apiLogin: process.env.PAYU_API_LOGIN,
         },
         transaction,
-        test: process.env.NODE_ENV !== "production",
+        test: false,
       }),
     })
 
@@ -436,7 +436,7 @@ export function createPaymentRequest(
       cookie: validatedCookie,
       userAgent: validatedUserAgent,
     },
-    test: process.env.NODE_ENV !== "production",
+    test: false,
   }
 
   // Registro de depuración (puedes quitarlo en producción)
@@ -564,11 +564,14 @@ export function parsePayUNotification(body: any) {
       break
     case "6": // Rechazado
     case "5": // Expirado
+    case "7": // Pendiente
       status = "Failed"
       break
     default:
       status = "Pending"
   }
+
+  console.log(`PayU notification state_pol: ${body.state_pol}, mapped to status: ${status}`)
 
   return {
     transactionId: body.transaction_id || body.reference_pol || "",
@@ -578,4 +581,32 @@ export function parsePayUNotification(body: any) {
     status,
   }
 }
+
+// Función auxiliar para mapear estados de transacción de PayU
+export function mapTransactionStatus(state: string): "Completed" | "Failed" | "Pending" {
+  if (!state) return "Pending"
+
+  const stateUpper = state.toUpperCase()
+  console.log("Mapping PayU transaction state:", stateUpper)
+
+  switch (stateUpper) {
+    case "APPROVED":
+      return "Completed"
+    case "DECLINED":
+    case "EXPIRED":
+    case "REJECTED":
+    case "ENTITY_DECLINED":
+    case "ERROR":
+    case "FAILED":
+      return "Failed"
+    case "PENDING":
+    case "PENDING_TRANSACTION_CONFIRMATION":
+      return "Pending"
+    default:
+      console.warn(`Unknown PayU transaction state: ${stateUpper}, defaulting to Pending`)
+      return "Pending"
+  }
+}
+
+// Exportar la función para que pueda ser usada en el webhook
 

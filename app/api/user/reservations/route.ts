@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/session"
-import { getReservationsByUser, getReservationsByEmail } from "@/models/reservation"
+import { getReservationsByUser, getReservationsByEmail, getReservationWithDetailsById } from "@/models/reservation"
 
 export async function GET() {
   try {
@@ -25,11 +25,19 @@ export async function GET() {
       }
     }
 
+    // Get detailed information for each reservation
+    const detailedReservations = await Promise.all(
+      allReservations.map(async (reservation) => {
+        const details = await getReservationWithDetailsById(reservation._id.toString())
+        return details || reservation
+      }),
+    )
+
     // Sort by check-in date (newest first)
-    allReservations.sort((a, b) => new Date(b.checkInDate).getTime() - new Date(a.checkInDate).getTime())
+    detailedReservations.sort((a, b) => new Date(b.checkInDate).getTime() - new Date(a.checkInDate).getTime())
 
     // Return empty array if no reservations found (instead of error)
-    return NextResponse.json(allReservations)
+    return NextResponse.json(detailedReservations)
   } catch (error: any) {
     console.error("Error fetching user reservations:", error)
     // Return empty array instead of error for better UX

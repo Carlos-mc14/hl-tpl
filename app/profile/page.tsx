@@ -326,19 +326,21 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
     }).format(amount)
   }
 
+  // Ensure room data is available
+  const roomType = reservation.room?.roomType || "Standard Room"
+  const roomNumber = reservation.room?.number || "Not assigned"
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-xl">
-              {reservation.room?.roomType || "Room"}
+              {roomType}
               {reservation.confirmationCode && ` - ${reservation.confirmationCode}`}
             </CardTitle>
             <CardDescription>
-              {reservation.room?.number
-                ? `Room ${reservation.room.number}`
-                : "Room details will be assigned at check-in"}
+              {roomNumber !== "Not assigned" ? `Room ${roomNumber}` : "Room details will be assigned at check-in"}
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -376,7 +378,7 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
             </div>
             <div className="flex items-center">
               <Bed className="h-4 w-4 mr-2 text-muted-foreground" />
-              <span className="text-sm">{reservation.room?.roomType || "Standard Room"}</span>
+              <span className="text-sm">{roomType}</span>
             </div>
             <div className="flex items-center">
               <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
