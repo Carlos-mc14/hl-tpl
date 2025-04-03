@@ -46,7 +46,10 @@ export async function middleware(request: NextRequest) {
 
   // Check if the route is public
   const isPublicRoute =
-    publicRoutes.some((route) => pathname === route) || publicApiRoutes.some((route) => pathname.startsWith(route))
+    publicRoutes.some((route) => pathname === route) ||
+    publicApiRoutes.some((route) => pathname.startsWith(route)) ||
+    pathname.startsWith("/images/") || // Allow access to images
+    pathname === "/favicon.ico" // Allow access to favicon
 
   // If it's a public route, allow access
   if (isPublicRoute) {
@@ -134,8 +137,9 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
+     * - images folder (added)
      */
-    "/((?!_next/static|_next/image|favicon.ico|public).*)",
+    "/((?!_next/static|_next/image|favicon.ico|public|images).*)",
   ],
 }
 
