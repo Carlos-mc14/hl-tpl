@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       returnUrl,
       cancelUrl,
       reservationData,
-      paymentMethod = "VISA",
+      paymentMethod,
       otpCode,
       cardData,
     } = body
@@ -237,7 +237,7 @@ export async function POST(request: Request) {
 
     // Preparar datos adicionales para la tarjeta si es necesario
     let creditCardInfo = undefined
-    if ((paymentMethod === "VISA" || paymentMethod === "MASTERCARD") && cardData) {
+    if ((paymentMethod === "VISA" || paymentMethod === "MASTERCARD" || paymentMethod === "YAPE") && cardData) {
       creditCardInfo = {
         number: cardData.number.replace(/\s+/g, ""),
         securityCode: cardData.cvc,
@@ -282,8 +282,8 @@ export async function POST(request: Request) {
       // Process payment through PayU
       const payuResponse = await processPayment(paymentRequest)
 
-      // Verificar si la respuesta de PayU es exitosa
-      if (payuResponse.code === "SUCCESS" ) {
+      // Verificar si la respuesta de PayU es exitosa en términos de comunicación
+      if (payuResponse.code === "SUCCESS") {
         // IMPORTANTE: Verificar el estado de la transacción dentro de transactionResponse
         const transactionState = payuResponse.transactionResponse?.state || ""
         const transactionResponseCode = payuResponse.transactionResponse?.responseCode || ""
@@ -319,48 +319,50 @@ export async function POST(request: Request) {
           },
         )
           
-        // Si el pago fue exitoso y es una reserva temporal, convertirla en permanente
-        if (paymentStatus === "Completed" && isTemporaryId) {
-          try {
-            // Obtener la reserva temporal
-            const tempReservation = await db.collection("temporaryReservations").findOne({
-              _id: new ObjectId(actualReservationId),
-            })
-
-            if (tempReservation) {
-              // Buscar una habitación disponible
-              const roomType = await db.collection("roomTypes").findOne({
-                _id: new ObjectId(tempReservation.roomTypeId),
+        // Verificar si la transacción fue realmente aprobada o está pendiente legítimamente
+        // IMPORTANT: Check if transaction was APPROVED or PENDING, not just if the API call was successful
+        if (transactionState === "APPROVED" || transactionState === "PENDING") {
+          // Si el pago fue exitoso y es una reserva temporal, convertirla en permanente
+          if (transactionState === "APPROVED" && isTemporaryId) {
+            try {
+              // Obtener la reserva temporal
+              const tempReservation = await db.collection("temporaryReservations").findOne({
+                _id: new ObjectId(actualReservationId),
               })
 
-              if (roomType) {
-                const rooms = await db.collection("rooms").find({ roomTypeId: tempReservation.roomTypeId }).toArray()
+              if (tempReservation) {
+                // Buscar una habitación disponible
+                const roomType = await db.collection("roomTypes").findOne({
+                  _id: new ObjectId(tempReservation.roomTypeId),
+                })
 
-                // Verificar disponibilidad
-                const availableRoom = rooms.find((room) => room.status === "Available")
+                if (roomType) {
+                  const rooms = await db.collection("rooms").find({ roomTypeId: tempReservation.roomTypeId }).toArray()
 
-                if (availableRoom) {
-                  // Crear reserva permanente
-                  const permanentReservation = {
-                    roomId: availableRoom._id.toString(),
-                    userId: user ? user.id : undefined,
-                    guest: tempReservation.guest,
-                    checkInDate: tempReservation.checkInDate,
-                    checkOutDate: tempReservation.checkOutDate,
-                    adults: tempReservation.adults,
-                    children: tempReservation.children,
-                    totalPrice: tempReservation.totalPrice,
-                    status: "Confirmed",
-                    paymentStatus: paymentStatus,
-                    paymentMethod: paymentMethod,
-                    specialRequests: tempReservation.specialRequests,
-                    confirmationCode: tempReservation.confirmationCode,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                  }
+                  // Verificar disponibilidad
+                  const availableRoom = rooms.find((room) => room.status === "Available")
 
-                  // Solo guardar la reserva permanente si el pago fue exitoso
-                  if (paymentStatus === "Completed") {
+                  if (availableRoom) {
+                    // Crear reserva permanente
+                    const permanentReservation = {
+                      roomId: availableRoom._id.toString(),
+                      userId: user ? user.id : undefined,
+                      guest: tempReservation.guest,
+                      checkInDate: tempReservation.checkInDate,
+                      checkOutDate: tempReservation.checkOutDate,
+                      adults: tempReservation.adults,
+                      children: tempReservation.children,
+                      totalPrice: tempReservation.totalPrice,
+                      status: "Confirmed",
+                      paymentStatus: paymentStatus,
+                      paymentMethod: paymentMethod,
+                      specialRequests: tempReservation.specialRequests,
+                      confirmationCode: tempReservation.confirmationCode,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    }
+
+                    // Solo guardar la reserva permanente si el pago fue exitoso
                     const result = await db.collection("reservations").insertOne(permanentReservation)
 
                     // Actualizar el estado de la habitación
@@ -380,28 +382,41 @@ export async function POST(request: Request) {
                     await invalidateCachePattern("availability:*")
 
                     console.log("Reserva temporal convertida a permanente:", result.insertedId)
-                  } else {
-                    console.log("No se convirtió la reserva temporal a permanente porque el pago no fue exitoso")
                   }
                 }
               }
+            } catch (conversionError) {
+              console.error("Error al convertir reserva temporal a permanente:", conversionError)
+              // Continuar aunque falle la conversión
             }
-          } catch (conversionError) {
-            console.error("Error al convertir reserva temporal a permanente:", conversionError)
-            // Continuar aunque falle la conversión
           }
-        }
 
-        // Return the PayU response with payment URL and status
-        return NextResponse.json({
-          success: true,
-          paymentId: payment._id,
-          paymentStatus: paymentStatus,
-          isTemporary: isTemporaryId,
-          originalTempId: isTemporaryId ? reservationId : null,
-          actualReservationId,
-          payuResponse,
-        })
+          // Return the PayU response with payment URL and success true
+          return NextResponse.json({
+            success: true,
+            paymentId: payment._id,
+            paymentStatus: paymentStatus,
+            isTemporary: isTemporaryId,
+            originalTempId: isTemporaryId ? reservationId : null,
+            actualReservationId,
+            payuResponse,
+          })
+        } else {
+          // Si el estado de la transacción NO es APPROVED ni PENDING, considerarlo como no exitoso
+          // aunque la comunicación con PayU haya sido correcta
+          console.log(`Transacción rechazada: Estado=${transactionState}, Código=${transactionResponseCode}`)
+          
+          return NextResponse.json({
+            success: false,
+            paymentId: payment._id,
+            paymentStatus: paymentStatus,
+            isTemporary: isTemporaryId,
+            originalTempId: isTemporaryId ? reservationId : null,
+            actualReservationId,
+            message: "Transacción rechazada por la entidad financiera",
+            payuResponse,
+          }, { status: 400 })
+        }
       } else {
         // Si hay un error en la respuesta de PayU, actualizar el estado del pago
         console.error("PayU error response:", payuResponse)
@@ -448,4 +463,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: error.message || "An error occurred while creating payment" }, { status: 500 })
   }
 }
-
