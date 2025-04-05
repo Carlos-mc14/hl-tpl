@@ -5,6 +5,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { RoleTable } from "@/components/admin/role-table"
 import { getCurrentUser } from "@/lib/session-utils"
 
+export const dynamic = "force-dynamic"
+
 export default async function RolesPage() {
   const user = await getCurrentUser()
 

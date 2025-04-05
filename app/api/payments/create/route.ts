@@ -6,10 +6,16 @@ import { getCurrentUser } from "@/lib/session"
 import { ObjectId } from "mongodb"
 import { getDb } from "@/lib/mongodb"
 import { invalidateCachePattern } from "@/lib/redis"
+import { applyRateLimit } from "@/lib/rate-limiter"
 
 // Modificar la función para mejorar el manejo de reservas temporales
 export async function POST(request: Request) {
   try {
+
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request)
+    if (rateLimitResponse) return rateLimitResponse
+    
     // Obtener el usuario actual (si está autenticado)
     const user = await getCurrentUser()
     // Ya no requerimos autenticación para procesar pagos

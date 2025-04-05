@@ -5,6 +5,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { RoomTypeTable } from "@/components/admin/room-type-table"
 import { getCurrentUser } from "@/lib/session-utils"
 
+export const dynamic = "force-dynamic"
+
 export default async function RoomTypesPage() {
   const user = await getCurrentUser()
 

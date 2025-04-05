@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server"
 import { resetPassword } from "@/models/user"
+import { applyRateLimit } from "@/lib/rate-limiter"
 
 export async function POST(request: Request) {
   try {
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request)
+    if (rateLimitResponse) return rateLimitResponse
+        
     const body = await request.json()
     const { token, password, confirmPassword } = body
 

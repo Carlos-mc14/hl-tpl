@@ -7,6 +7,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { ReservationDashboard } from "@/components/dashboard/reservation-dashboard"
 import { getCurrentUser } from "@/lib/session-utils"
 
+export const dynamic = "force-dynamic"
+
 export default async function ReservationsPage() {
   const user = await getCurrentUser()
 

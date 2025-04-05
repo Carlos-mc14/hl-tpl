@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { getCurrentUser } from "@/lib/session"
+import { applyRateLimit } from "@/lib/rate-limiter"
+import { isValidObjectId } from "@/lib/validation"
+import { handleApiError, NotFoundError, ForbiddenError, ValidationError } from "@/lib/error-handler"
+import { logAuditEvent, AuditEventType } from "@/lib/audit-logger"
+import { invalidateCachePattern } from "@/lib/cache"
 
 // Realizar check-in de una reserva
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -9,20 +14,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     // Verificar permisos
     const hasPermission = user.role === "Administrator" || user.permissions.includes("manage:reservations")
 
     if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
     }
 
-    const { id } = params
+    const { id } = await params
 
-    if (!ObjectId.isValid(id)) {
-      return NextResponse.json({ message: "Invalid reservation ID format" }, { status: 400 })
+    if (!isValidObjectId(id)) {
+      throw new ValidationError("Invalid reservation ID format")
     }
 
     const db = await getDb()
@@ -31,26 +36,26 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const reservation = await db.collection("reservations").findOne({ _id: new ObjectId(id) })
 
     if (!reservation) {
-      return NextResponse.json({ message: "Reservation not found" }, { status: 404 })
+      throw new NotFoundError("Reservation not found")
     }
 
     // Verificar que la reserva esté en estado "Confirmed"
     if (reservation.status !== "Confirmed") {
-      return NextResponse.json(
-        {
-          message: "Cannot check-in a reservation that is not in 'Confirmed' status",
-        },
-        { status: 400 },
-      )
+      throw new ValidationError("Cannot check-in a reservation that is not in 'Confirmed' status")
     }
 
-    // Actualizar el estado de la reserva a "Checked-in"
+    // Capturar la hora actual para el check-in
+    const checkInTime = new Date()
+
+    // Actualizar el estado de la reserva a "Checked-in" y registrar quién lo hizo y cuándo
     await db.collection("reservations").updateOne(
       { _id: new ObjectId(id) },
       {
         $set: {
           status: "Checked-in",
-          updatedAt: new Date(),
+          updatedAt: checkInTime,
+          checkedInBy: user.id, // ID del usuario que realizó el check-in
+          checkedInAt: checkInTime, // Hora exacta del check-in
         },
       },
     )
@@ -62,19 +67,39 @@ export async function POST(request: Request, { params }: { params: { id: string 
         {
           $set: {
             status: "Occupied",
-            updatedAt: new Date(),
+            updatedAt: checkInTime,
           },
         },
       )
     }
 
+    // Invalidar caché relacionada
+    await invalidateCachePattern("reservations:*")
+    await invalidateCachePattern("reservationsWithDetails:*")
+
+    // Registrar evento de auditoría
+    await logAuditEvent(
+      AuditEventType.UPDATE,
+      "reservation",
+      id,
+      {
+        action: "check-in",
+        roomId: reservation.roomId,
+        guestName: `${reservation.guest.firstName} ${reservation.guest.lastName}`,
+        performedBy: user.email,
+        performedAt: checkInTime,
+      },
+      request,
+    )
+
     return NextResponse.json({
       message: "Check-in completed successfully",
       reservationId: id,
+      checkedInBy: user.email,
+      checkedInAt: checkInTime,
     })
   } catch (error) {
-    console.error("Error al realizar check-in:", error)
-    return NextResponse.json({ message: "Error al realizar check-in" }, { status: 500 })
+    return handleApiError(error, request, "reservation", params.id)
   }
 }
 

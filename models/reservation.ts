@@ -16,6 +16,7 @@ export interface Guest {
   idType?: string
 }
 
+// Actualizar la interfaz Reservation para incluir los campos de check-in y check-out
 export interface Reservation {
   _id?: ObjectId
   roomId: string
@@ -33,14 +34,31 @@ export interface Reservation {
   createdAt: Date
   updatedAt: Date
   confirmationCode: string
+  // Nuevos campos para tracking de check-in y check-out
+  checkedInBy?: string
+  checkedInAt?: Date
+  checkedOutBy?: string
+  checkedOutAt?: Date
 }
 
+// También actualizar la interfaz ReservationWithDetails
 export interface ReservationWithDetails extends Reservation {
   room: {
     number: string
     roomType: string
   }
   user?: {
+    firstName: string
+    lastName: string
+    email: string
+  }
+  // Información adicional sobre quién realizó el check-in/check-out
+  checkedInByUser?: {
+    firstName: string
+    lastName: string
+    email: string
+  }
+  checkedOutByUser?: {
     firstName: string
     lastName: string
     email: string
@@ -167,6 +185,7 @@ export async function getReservationByConfirmationCode(code: string) {
 }
 
 // Fix the getReservationWithDetailsById function
+// También actualizar la función getReservationWithDetailsById para incluir la información de check-in/check-out
 export async function getReservationWithDetailsById(id: string): Promise<ReservationWithDetails | null> {
   return getCachedData(
     `reservationWithDetails:${id}`,
@@ -183,9 +202,21 @@ export async function getReservationWithDetailsById(id: string): Promise<Reserva
         // Get room type name
         const roomType = await db.collection("roomTypes").findOne({ _id: new ObjectId(room.roomTypeId) })
 
+        // Obtener información del usuario de la reserva
         let user = null
         if (reservation.userId) {
           user = await getUserById(reservation.userId)
+        }
+
+        // Obtener información de los usuarios que realizaron check-in/check-out
+        let checkedInByUser = null
+        if (reservation.checkedInBy) {
+          checkedInByUser = await getUserById(reservation.checkedInBy)
+        }
+
+        let checkedOutByUser = null
+        if (reservation.checkedOutBy) {
+          checkedOutByUser = await getUserById(reservation.checkedOutBy)
         }
 
         return {
@@ -205,6 +236,11 @@ export async function getReservationWithDetailsById(id: string): Promise<Reserva
           createdAt: reservation.createdAt,
           updatedAt: reservation.updatedAt,
           confirmationCode: reservation.confirmationCode,
+          // Incluir información de check-in/check-out
+          checkedInBy: reservation.checkedInBy,
+          checkedInAt: reservation.checkedInAt,
+          checkedOutBy: reservation.checkedOutBy,
+          checkedOutAt: reservation.checkedOutAt,
           room: {
             number: room.number,
             roomType: roomType ? roomType.name : "Unknown",
@@ -214,6 +250,21 @@ export async function getReservationWithDetailsById(id: string): Promise<Reserva
                 firstName: user.firstName,
                 lastName: user.lastName,
                 email: user.email,
+              }
+            : undefined,
+          // Incluir información de los usuarios que realizaron check-in/check-out
+          checkedInByUser: checkedInByUser
+            ? {
+                firstName: checkedInByUser.firstName,
+                lastName: checkedInByUser.lastName,
+                email: checkedInByUser.email,
+              }
+            : undefined,
+          checkedOutByUser: checkedOutByUser
+            ? {
+                firstName: checkedOutByUser.firstName,
+                lastName: checkedOutByUser.lastName,
+                email: checkedOutByUser.email,
               }
             : undefined,
         }
@@ -468,13 +519,19 @@ export async function getReservationsWithDetails(): Promise<ReservationWithDetai
           {} as Record<string, any>,
         )
 
-        // Get all users in one query
-        // Fix: Use Array.from instead of spread operator for Set
-        const userIds = Array.from(new Set(reservations.filter((r) => r.userId).map((r) => r.userId)))
+        // Recopilar todos los IDs de usuario (incluyendo checkedInBy y checkedOutBy)
+        const userIds = new Set<string>()
+
+        reservations.forEach((r) => {
+          if (r.userId) userIds.add(r.userId)
+          if (r.checkedInBy) userIds.add(r.checkedInBy)
+          if (r.checkedOutBy) userIds.add(r.checkedOutBy)
+        })
+
         const users = await db
           .collection("users")
           .find({
-            _id: { $in: userIds.map((id) => new ObjectId(id as string)) },
+            _id: { $in: Array.from(userIds).map((id) => new ObjectId(id)) },
           })
           .toArray()
 
@@ -490,6 +547,10 @@ export async function getReservationsWithDetails(): Promise<ReservationWithDetai
           const room = roomsMap[reservation.roomId]
           const roomType = room ? roomTypesMap[room.roomTypeId] : null
           const user = reservation.userId ? usersMap[reservation.userId] : null
+
+          // Obtener información de los usuarios que realizaron check-in/check-out
+          const checkedInByUser = reservation.checkedInBy ? usersMap[reservation.checkedInBy] : null
+          const checkedOutByUser = reservation.checkedOutBy ? usersMap[reservation.checkedOutBy] : null
 
           return {
             _id: reservation._id,
@@ -508,6 +569,11 @@ export async function getReservationsWithDetails(): Promise<ReservationWithDetai
             createdAt: reservation.createdAt,
             updatedAt: reservation.updatedAt,
             confirmationCode: reservation.confirmationCode,
+            // Incluir información de check-in/check-out
+            checkedInBy: reservation.checkedInBy,
+            checkedInAt: reservation.checkedInAt,
+            checkedOutBy: reservation.checkedOutBy,
+            checkedOutAt: reservation.checkedOutAt,
             room: {
               number: room ? room.number : "Unknown",
               roomType: roomType ? roomType.name : "Unknown",
@@ -517,6 +583,21 @@ export async function getReservationsWithDetails(): Promise<ReservationWithDetai
                   firstName: user.firstName,
                   lastName: user.lastName,
                   email: user.email,
+                }
+              : undefined,
+            // Incluir información de los usuarios que realizaron check-in/check-out
+            checkedInByUser: checkedInByUser
+              ? {
+                  firstName: checkedInByUser.firstName,
+                  lastName: checkedInByUser.lastName,
+                  email: checkedInByUser.email,
+                }
+              : undefined,
+            checkedOutByUser: checkedOutByUser
+              ? {
+                  firstName: checkedOutByUser.firstName,
+                  lastName: checkedOutByUser.lastName,
+                  email: checkedOutByUser.email,
                 }
               : undefined,
           }

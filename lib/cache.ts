@@ -1,7 +1,11 @@
 import redis from "./redis"
+import { cache } from "react"
 
 // Tiempo de caché predeterminado: 5 minutos
 const DEFAULT_CACHE_TIME = 300
+
+// Caché en memoria para usar durante la renderización estática
+const memoryCache = new Map<string, { data: any; expiry: number }>()
 
 /**
  * Obtiene datos de la caché o de la función proporcionada si no están en caché
@@ -14,6 +18,23 @@ export async function getCachedData<T>(
   fetchFn: () => Promise<T>,
   ttl: number = DEFAULT_CACHE_TIME,
 ): Promise<T> {
+  // Verificar si estamos en un entorno de renderizado estático
+  const isStaticRendering = typeof window === "undefined" && process.env.NEXT_PHASE === "phase-production-build"
+
+  // Si estamos en un entorno de renderizado estático, usar caché en memoria
+  if (isStaticRendering) {
+    const now = Date.now()
+    const cached = memoryCache.get(key)
+
+    if (cached && cached.expiry > now) {
+      return cached.data as T
+    }
+
+    const freshData = await fetchFn()
+    memoryCache.set(key, { data: freshData, expiry: now + ttl * 1000 })
+    return freshData
+  }
+
   try {
     // Intentar obtener datos de la caché
     const cachedData = await redis.get(key)
@@ -64,6 +85,19 @@ export async function getCachedData<T>(
   }
 }
 
+// Versión de getCachedData que usa React cache() para renderizado estático
+export const getCachedDataStatic = cache(async <T>(
+  key: string,
+  fetchFn: () => Promise<T>,
+): Promise<T> => {
+try {
+  return await fetchFn();
+} catch (error) {
+  console.error(`Error en getCachedDataStatic para la clave: ${key}`, error)
+  throw error
+}
+})
+
 /**
  * Invalida una clave de caché específica
  * @param key Clave a invalidar
@@ -71,6 +105,8 @@ export async function getCachedData<T>(
 export async function invalidateCache(key: string): Promise<void> {
   try {
     await redis.del(key)
+    // También limpiar la caché en memoria
+    memoryCache.delete(key)
   } catch (error) {
     console.error(`Error al invalidar caché para la clave ${key}:`, error)
   }
@@ -87,6 +123,8 @@ export async function invalidateCachePattern(pattern: string) {
       // Eliminar cada clave individualmente
       for (const key of keys) {
         await redis.del(key)
+        // También limpiar la caché en memoria
+        memoryCache.delete(key)
       }
       console.log(`Invalidated ${keys.length} cache keys matching pattern: ${pattern}`)
     } else {

@@ -5,53 +5,73 @@ import { getCurrentUser } from "@/lib/session"
 import { checkPermission } from "@/lib/permissions"
 import { invalidateCachePattern } from "@/lib/cache"
 import { updateRoomStatus } from "@/models/room"
+import { applyRateLimit } from "@/lib/rate-limiter"
+import { sanitizeObject, isValidObjectId, isValidEmail, isValidDate } from "@/lib/validation"
+import { handleApiError, ValidationError, ForbiddenError, NotFoundError, ConflictError } from "@/lib/error-handler"
+import { logAuditEvent, AuditEventType } from "@/lib/audit-logger"
 
 export async function POST(request: Request) {
   try {
     // Check authentication
     const user = await getCurrentUser()
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     // Check permissions
     const canManageReservations = checkPermission(user.id, "manage:reservations") || user.role === "Administrator"
     if (!canManageReservations) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
     }
 
     // Parse request body
-    const data = await request.json()
+    const rawData = await request.json()
+
+    // Sanitizar datos de entrada
+    const data = sanitizeObject(rawData)
 
     // Validate required fields
     if (!data.roomId || !data.guest || !data.checkInDate || !data.checkOutDate) {
-      return NextResponse.json(
-        { message: "Missing required fields: roomId, guest, checkInDate, checkOutDate" },
-        { status: 400 },
-      )
+      throw new ValidationError("Missing required fields: roomId, guest, checkInDate, checkOutDate")
     }
 
     // Validate guest information
     if (!data.guest.firstName || !data.guest.lastName || !data.guest.email) {
-      return NextResponse.json(
-        { message: "Missing required guest information: firstName, lastName, email" },
-        { status: 400 },
-      )
+      throw new ValidationError("Missing required guest information: firstName, lastName, email")
+    }
+
+    // Validar formato de email
+    if (!isValidEmail(data.guest.email)) {
+      throw new ValidationError("Invalid email format")
+    }
+
+    // Validar fechas
+    if (!isValidDate(data.checkInDate) || !isValidDate(data.checkOutDate)) {
+      throw new ValidationError("Invalid date format")
+    }
+
+    const checkInDate = new Date(data.checkInDate)
+    const checkOutDate = new Date(data.checkOutDate)
+
+    // Verificar que la fecha de salida sea posterior a la de entrada
+    if (checkOutDate <= checkInDate) {
+      throw new ValidationError("Check-out date must be after check-in date")
     }
 
     // Connect to database
     const db = await getDb()
 
     // Verify room exists
-    const room = await db.collection("rooms").findOne({ _id: new ObjectId(data.roomId) })
-    if (!room) {
-      return NextResponse.json({ message: "Room not found" }, { status: 404 })
+    if (!isValidObjectId(data.roomId)) {
+      throw new ValidationError("Invalid room ID format")
     }
 
-    // Check for overlapping reservations
-    const checkInDate = new Date(data.checkInDate)
-    const checkOutDate = new Date(data.checkOutDate)
+    const room = await db.collection("rooms").findOne({ _id: new ObjectId(data.roomId) })
+    if (!room) {
+      throw new NotFoundError("Room not found")
+    }
 
+    // Check for overlapping reservations with index
     const overlappingReservation = await db.collection("reservations").findOne({
       roomId: data.roomId,
       status: { $in: ["Pending", "Confirmed", "Checked-in"] },
@@ -64,8 +84,11 @@ export async function POST(request: Request) {
     })
 
     if (overlappingReservation) {
-      return NextResponse.json({ message: "Room is already reserved for the selected dates" }, { status: 409 })
+      throw new ConflictError("Room is already reserved for the selected dates")
     }
+
+    // Generar código de confirmación único
+    const confirmationCode = data.confirmationCode || generateConfirmationCode()
 
     // Create reservation object
     const reservation = {
@@ -84,7 +107,7 @@ export async function POST(request: Request) {
       status: data.status || "Confirmed",
       paymentStatus: data.paymentStatus || "Pending",
       specialRequests: data.specialRequests || "",
-      confirmationCode: data.confirmationCode,
+      confirmationCode,
       createdAt: new Date(),
       updatedAt: new Date(),
       createdBy: user.id, // Track who created the reservation
@@ -104,17 +127,43 @@ export async function POST(request: Request) {
     await invalidateCachePattern("reservations:*")
     await invalidateCachePattern("reservationsWithDetails:*")
 
+    // Registrar evento de auditoría
+    await logAuditEvent(
+      AuditEventType.CREATE,
+      "reservation",
+      result.insertedId.toString(),
+      {
+        roomId: data.roomId,
+        guestName: `${data.guest.firstName} ${data.guest.lastName}`,
+        checkInDate,
+        checkOutDate,
+        status: data.status,
+      },
+      request,
+    )
+
     // Return success response
     return NextResponse.json({
       message: "Reservation created successfully",
       reservationId: result.insertedId,
-      confirmationCode: data.confirmationCode,
+      confirmationCode,
     })
   } catch (error: any) {
-    console.error("Error creating reservation:", error)
-    return NextResponse.json(
-      { message: error.message || "An error occurred while creating the reservation" },
-      { status: 500 },
-    )
+    return handleApiError(error, request, "reservation", "create")
   }
 }
+
+// Función para generar un código de confirmación único
+function generateConfirmationCode(): string {
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  const length = 8
+  let code = ""
+
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length)
+    code += characters.charAt(randomIndex)
+  }
+
+  return code
+}
+

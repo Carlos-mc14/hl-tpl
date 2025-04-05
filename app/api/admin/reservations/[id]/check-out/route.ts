@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { getCurrentUser } from "@/lib/session"
+import { applyRateLimit } from "@/lib/rate-limiter"
+import { isValidObjectId } from "@/lib/validation"
+import { handleApiError, NotFoundError, ForbiddenError, ValidationError } from "@/lib/error-handler"
+import { logAuditEvent, AuditEventType } from "@/lib/audit-logger"
+import { invalidateCachePattern } from "@/lib/cache"
 
 // Realizar check-out de una reserva
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -9,74 +14,92 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     // Verificar permisos
-    const hasPermission = 
-      user.role === "Administrator" || 
-      user.permissions.includes("manage:reservations")
+    const hasPermission = user.role === "Administrator" || user.permissions.includes("manage:reservations")
 
     if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
     }
 
-    const { id } = params
-    
-    if (!ObjectId.isValid(id)) {
-      return NextResponse.json({ message: "Invalid reservation ID format" }, { status: 400 })
+    const { id } = await params
+
+    if (!isValidObjectId(id)) {
+      throw new ValidationError("Invalid reservation ID format")
     }
 
     const db = await getDb()
-    
+
     // Obtener la reserva
     const reservation = await db.collection("reservations").findOne({ _id: new ObjectId(id) })
-    
+
     if (!reservation) {
-      return NextResponse.json({ message: "Reservation not found" }, { status: 404 })
+      throw new NotFoundError("Reservation not found")
     }
-    
+
     // Verificar que la reserva esté en estado "Checked-in"
     if (reservation.status !== "Checked-in") {
-      return NextResponse.json({ 
-        message: "Cannot check-out a reservation that is not in 'Checked-in' status" 
-      }, { status: 400 })
+      throw new ValidationError("Cannot check-out a reservation that is not in 'Checked-in' status")
     }
-    
-    // Actualizar el estado de la reserva a "Checked-out"
+
+    // Capturar la hora actual para el check-out
+    const checkOutTime = new Date()
+
+    // Actualizar el estado de la reserva a "Checked-out" y registrar quién lo hizo y cuándo
     await db.collection("reservations").updateOne(
       { _id: new ObjectId(id) },
-      { 
-        $set: { 
+      {
+        $set: {
           status: "Checked-out",
-          updatedAt: new Date()
-        } 
-      }
+          updatedAt: checkOutTime,
+          checkedOutBy: user.id, // ID del usuario que realizó el check-out
+          checkedOutAt: checkOutTime, // Hora exacta del check-out
+        },
+      },
     )
-    
+
     // Si hay una habitación asignada, actualizar su estado a "Cleaning"
     if (reservation.roomId) {
       await db.collection("rooms").updateOne(
         { _id: new ObjectId(reservation.roomId) },
-        { 
-          $set: { 
+        {
+          $set: {
             status: "Cleaning",
-            updatedAt: new Date()
-          } 
-        }
+            updatedAt: checkOutTime,
+          },
+        },
       )
     }
-    
-    return NextResponse.json({ 
+
+    // Invalidar caché relacionada
+    await invalidateCachePattern("reservations:*")
+    await invalidateCachePattern("reservationsWithDetails:*")
+
+    // Registrar evento de auditoría
+    await logAuditEvent(
+      AuditEventType.UPDATE,
+      "reservation",
+      id,
+      {
+        action: "check-out",
+        roomId: reservation.roomId,
+        guestName: `${reservation.guest.firstName} ${reservation.guest.lastName}`,
+        performedBy: user.email,
+        performedAt: checkOutTime,
+      },
+      request,
+    )
+
+    return NextResponse.json({
       message: "Check-out completed successfully",
-      reservationId: id
+      reservationId: id,
+      checkedOutBy: user.email,
+      checkedOutAt: checkOutTime,
     })
   } catch (error) {
-    console.error("Error al realizar check-out:", error)
-    return NextResponse.json(
-      { message: "Error al realizar check-out" },
-      { status: 500 }
-    )
+    return handleApiError(error, request, "reservation", params.id)
   }
 }
 

@@ -38,6 +38,15 @@ export function ReservationDetailsDialog({
     }
   }
 
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return null
+    try {
+      return format(new Date(dateString), "PPP 'a las' HH:mm", { locale: es })
+    } catch (e) {
+      return null
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Confirmed":
@@ -104,6 +113,9 @@ export function ReservationDetailsDialog({
               <div>
                 <h4 className="text-sm font-medium">Check-in</h4>
                 <p>{formatDate(reservation.checkInDate)}</p>
+                {reservation.checkedInAt && (
+                  <p className="text-xs text-muted-foreground">Realizado: {formatDateTime(reservation.checkedInAt)}</p>
+                )}
               </div>
             </div>
 
@@ -112,6 +124,9 @@ export function ReservationDetailsDialog({
               <div>
                 <h4 className="text-sm font-medium">Check-out</h4>
                 <p>{formatDate(reservation.checkOutDate)}</p>
+                {reservation.checkedOutAt && (
+                  <p className="text-xs text-muted-foreground">Realizado: {formatDateTime(reservation.checkedOutAt)}</p>
+                )}
               </div>
             </div>
           </div>
@@ -173,6 +188,57 @@ export function ReservationDetailsDialog({
               </div>
             </div>
           </div>
+
+          {/* Información de quién realizó el check-in/check-out */}
+          {(reservation.checkedInAt || reservation.checkedOutAt) && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Registro de Operaciones</h4>
+                <div className="space-y-2">
+                  {reservation.checkedInAt && (
+                    <div className="bg-muted/50 p-2 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-4 w-4 text-blue-500" />
+                        <div>
+                          <p className="text-sm font-medium">Check-in realizado por:</p>
+                          {reservation.checkedInByUser ? (
+                            <p className="text-sm">
+                              {reservation.checkedInByUser.firstName} {reservation.checkedInByUser.lastName} (
+                              {reservation.checkedInByUser.email})
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Usuario no disponible</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">{formatDateTime(reservation.checkedInAt)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {reservation.checkedOutAt && (
+                    <div className="bg-muted/50 p-2 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <UserX className="h-4 w-4 text-gray-500" />
+                        <div>
+                          <p className="text-sm font-medium">Check-out realizado por:</p>
+                          {reservation.checkedOutByUser ? (
+                            <p className="text-sm">
+                              {reservation.checkedOutByUser.firstName} {reservation.checkedOutByUser.lastName} (
+                              {reservation.checkedOutByUser.email})
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Usuario no disponible</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">{formatDateTime(reservation.checkedOutAt)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
 
           {reservation.specialRequests && (
             <div className="space-y-2">

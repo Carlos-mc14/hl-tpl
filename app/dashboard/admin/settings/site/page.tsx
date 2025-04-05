@@ -5,6 +5,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { SiteConfigForm } from "@/components/dashboard/site-config-form"
 import { getSiteConfig } from "@/models/site-config"
 
+export const dynamic = "force-dynamic"
+
 export default async function SiteConfigPage() {
   const user = await getCurrentUser()
 

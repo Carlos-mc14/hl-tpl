@@ -2,9 +2,15 @@ import { NextResponse } from "next/server"
 import { getUserByEmail, setResetPasswordToken } from "@/models/user"
 import { sendPasswordResetEmail } from "@/lib/email"
 import { v4 as uuidv4 } from "uuid"
+import { applyRateLimit } from "@/lib/rate-limiter"
 
 export async function POST(request: Request) {
   try {
+    
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request)
+    if (rateLimitResponse) return rateLimitResponse
+    
     const body = await request.json()
     const { email } = body
 

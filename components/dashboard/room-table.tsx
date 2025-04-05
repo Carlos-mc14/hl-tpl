@@ -47,6 +47,15 @@ import { toast } from "@/components/ui/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { RoomDetailsDialog } from "@/components/dashboard/room-details-dialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface Room {
   _id: string
@@ -94,6 +103,12 @@ export function RoomTable() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false)
   const [selectedRoomForDetails, setSelectedRoomForDetails] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Estados para la selección múltiple
+  const [selectedRooms, setSelectedRooms] = useState<string[]>([])
+  const [bulkStatusDialogOpen, setBulkStatusDialogOpen] = useState(false)
+  const [bulkStatus, setBulkStatus] = useState<string>("Available")
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false)
 
   // Fetch rooms from the API
   const fetchRooms = async () => {
@@ -315,6 +330,106 @@ export function RoomTable() {
     }
   }
 
+  // Funciones para la selección múltiple
+  const toggleSelectRoom = (roomId: string) => {
+    setSelectedRooms((prev) => {
+      if (prev.includes(roomId)) {
+        return prev.filter((id) => id !== roomId)
+      } else {
+        return [...prev, roomId]
+      }
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedRooms.length === filteredRooms.length) {
+      setSelectedRooms([])
+    } else {
+      setSelectedRooms(filteredRooms.map((room) => room._id))
+    }
+  }
+
+  const handleBulkStatusChange = () => {
+    if (selectedRooms.length === 0) {
+      toast({
+        title: "No rooms selected",
+        description: "Please select at least one room to update.",
+        variant: "destructive",
+      })
+      return
+    }
+    setBulkStatusDialogOpen(true)
+  }
+
+  const updateBulkStatus = async () => {
+    if (selectedRooms.length === 0) return
+
+    setIsBulkUpdating(true)
+    try {
+      // Crear un array de promesas para actualizar cada habitación
+      const updatePromises = selectedRooms.map((roomId) => {
+        return fetch(`/api/admin/rooms/${roomId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status: bulkStatus }),
+        }).then((response) => {
+          if (!response.ok) {
+            throw new Error(`Failed to update room ${roomId}`)
+          }
+          return response.json()
+        })
+      })
+
+      // Esperar a que todas las actualizaciones se completen
+      const results = await Promise.allSettled(updatePromises)
+
+      // Contar éxitos y fallos
+      const successful = results.filter((result) => result.status === "fulfilled").length
+      const failed = results.filter((result) => result.status === "rejected").length
+
+      // Actualizar el estado de las habitaciones en el frontend
+      if (successful > 0) {
+        setRooms((prevRooms) =>
+          prevRooms.map((room) => {
+            if (selectedRooms.includes(room._id)) {
+              return { ...room, status: bulkStatus as any }
+            }
+            return room
+          }),
+        )
+      }
+
+      // Mostrar mensaje de éxito/error
+      if (failed === 0) {
+        toast({
+          title: "Success",
+          description: `Updated status of ${successful} rooms to ${bulkStatus}`,
+        })
+      } else {
+        toast({
+          title: "Partial success",
+          description: `Updated ${successful} rooms, failed to update ${failed} rooms`,
+          variant: "destructive",
+        })
+      }
+
+      // Limpiar selección
+      setSelectedRooms([])
+      setBulkStatusDialogOpen(false)
+    } catch (err) {
+      console.error("Error updating rooms:", err)
+      toast({
+        title: "Error",
+        description: "Failed to update rooms. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsBulkUpdating(false)
+    }
+  }
+
   // Reemplazar la parte de la interfaz de filtros con una versión mejorada
   return (
     <TooltipProvider>
@@ -468,12 +583,38 @@ export function RoomTable() {
               </div>
             </div>
           </div>
+
+          {/* Barra de acciones para selección múltiple */}
+          {selectedRooms.length > 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-md border bg-primary/5 p-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-primary text-primary-foreground">
+                  {selectedRooms.length} rooms selected
+                </Badge>
+                <Button variant="outline" size="sm" onClick={() => setSelectedRooms([])}>
+                  Clear selection
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleBulkStatusChange}>
+                  Change Status
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={selectedRooms.length > 0 && selectedRooms.length === filteredRooms.length}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all rooms"
+                  />
+                </TableHead>
                 <TableHead>Room Number</TableHead>
                 <TableHead>Floor</TableHead>
                 <TableHead>Type</TableHead>
@@ -487,7 +628,7 @@ export function RoomTable() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     <div className="flex items-center justify-center">
                       <Loader2 className="mr-2 h-5 w-5 animate-spin text-primary" />
                       <span>Loading rooms...</span>
@@ -496,7 +637,7 @@ export function RoomTable() {
                 </TableRow>
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-red-500">
+                  <TableCell colSpan={9} className="h-24 text-center text-red-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <XCircle className="h-6 w-6 text-red-500" />
                       <p>{error}</p>
@@ -509,7 +650,7 @@ export function RoomTable() {
                 </TableRow>
               ) : filteredRooms.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <SearchX className="h-6 w-6 text-muted-foreground" />
                       <p>No rooms found matching your filters.</p>
@@ -530,7 +671,17 @@ export function RoomTable() {
                 </TableRow>
               ) : (
                 filteredRooms.map((room) => (
-                  <TableRow key={room._id} className="group hover:bg-muted/50">
+                  <TableRow
+                    key={room._id}
+                    className={`group hover:bg-muted/50 ${selectedRooms.includes(room._id) ? "bg-primary/5" : ""}`}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedRooms.includes(room._id)}
+                        onCheckedChange={() => toggleSelectRoom(room._id)}
+                        aria-label={`Select room ${room.number}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{room.number}</TableCell>
                     <TableCell>{room.floor}</TableCell>
                     <TableCell>{room.roomType?.name || "Unknown"}</TableCell>
@@ -642,6 +793,49 @@ export function RoomTable() {
           onOpenChange={setDetailsDialogOpen}
           roomId={selectedRoomForDetails}
         />
+
+        {/* Diálogo para cambio de estado masivo */}
+        <Dialog open={bulkStatusDialogOpen} onOpenChange={setBulkStatusDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Change Status for Multiple Rooms</DialogTitle>
+              <DialogDescription>Update the status for {selectedRooms.length} selected rooms.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Select value={bulkStatus} onValueChange={setBulkStatus}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select new status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Available">Available</SelectItem>
+                    <SelectItem value="Maintenance">Maintenance</SelectItem>
+                    <SelectItem value="Cleaning">Cleaning</SelectItem>
+                    <SelectItem value="Reserved">Reserved</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  Note: Occupied rooms will only be updated if the new status is not conflicting with current occupancy.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkStatusDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={updateBulkStatus} disabled={isBulkUpdating}>
+                {isBulkUpdating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Rooms"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   )

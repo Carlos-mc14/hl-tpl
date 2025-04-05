@@ -1,135 +1,188 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { getCurrentUser } from "@/lib/session"
-import { checkPermission } from "@/lib/permissions"
-import { invalidateCachePattern } from "@/lib/cache"
+import { applyRateLimit } from "@/lib/rate-limiter"
+import { handleApiError, ForbiddenError } from "@/lib/error-handler"
+import { getCachedData } from "@/lib/cache"
 
-export async function GET(request: NextRequest) {
+// Obtener todas las reservaciones o filtradas por fecha
+export async function GET(request: Request) {
   try {
-    // Check authentication
+
     const user = await getCurrentUser()
+
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
-    // Check permissions
-    const canViewReservations = checkPermission(user.id, "view:reservations") || user.role === "Administrator"
-    if (!canViewReservations) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    // Verificar permisos
+    const hasPermission = user.role === "Administrator" || user.permissions.includes("read:reservations")
+
+    if (!hasPermission) {
+      throw new ForbiddenError("Insufficient permissions")
     }
 
-    // Get query parameters
-    const searchParams = request.nextUrl.searchParams
+    // Obtener parámetros de consulta
+    const { searchParams } = new URL(request.url)
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
-    const status = searchParams.get("status")
 
-    // Invalidate cache to ensure fresh data
-    await invalidateCachePattern("reservations:*")
-    await invalidateCachePattern("reservationsWithDetails:*")
+    // Construir la consulta
+    let query: any = {}
 
-    // Connect to database directly to bypass any caching issues
-    const db = await getDb()
-
-    // Build query
-    const query: any = {}
-
-    // If date range is provided, filter by date
     if (startDate && endDate) {
-      const start = new Date(startDate)
-      const end = new Date(endDate)
-
-      // Ensure valid dates
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return NextResponse.json({ message: "Invalid date format" }, { status: 400 })
+      query = {
+        $or: [
+          { checkInDate: { $gte: new Date(startDate), $lte: new Date(endDate) } },
+          { checkOutDate: { $gte: new Date(startDate), $lte: new Date(endDate) } },
+          {
+            checkInDate: { $lte: new Date(startDate) },
+            checkOutDate: { $gte: new Date(endDate) },
+          },
+        ],
       }
-
-      query.$or = [
-        // Reservas que comienzan en el rango de fechas
-        { checkInDate: { $gte: start, $lte: end } },
-        // Reservas que terminan en el rango de fechas
-        { checkOutDate: { $gte: start, $lte: end } },
-        // Reservas que abarcan todo el rango de fechas
-        { checkInDate: { $lte: start }, checkOutDate: { $gte: end } },
-      ]
     }
 
-    // Add status filter if provided
-    if (status) {
-      query.status = status
-    }
+    // Usar caché para mejorar el rendimiento
+    const cacheKey = `reservations:${startDate || "all"}:${endDate || "all"}`
 
-    // Get all reservations directly from database
-    const reservations = await db.collection("reservations").find(query).sort({ checkInDate: 1 }).toArray()
+    const reservations = await getCachedData(
+      cacheKey,
+      async () => {
+        const db = await getDb()
 
-    // Log the number of reservations found for debugging
-    //console.log(`Found ${reservations.length} reservations with query:`, JSON.stringify(query))
+        // Obtener todas las reservaciones que coincidan con la consulta
+        const reservations = await db.collection("reservations").find(query).sort({ checkInDate: 1 }).toArray()
 
-    // Log the reservations for debugging
-    /*console.log(
-      "Reservations details:",
-      reservations.map((r) => ({
-        id: r._id.toString(),
-        status: r.status,
-        checkIn: r.checkInDate,
-        checkOut: r.checkOutDate,
-        guest: r.guest.firstName + " " + r.guest.lastName,
-      })),
-    )*/
+        // Obtener todos los IDs de habitaciones
+        const roomIds = reservations.map((r) => (r.roomId ? new ObjectId(r.roomId) : null)).filter((id) => id !== null)
 
-    // Get room details for all reservations
-    const roomIds = reservations
-      .filter((r) => r.roomId && r.roomId !== "pending-assignment")
-      .map((r) => new ObjectId(r.roomId))
+        // Obtener todas las habitaciones en una sola consulta
+        const rooms = roomIds.length
+          ? await db
+              .collection("rooms")
+              .find({ _id: { $in: roomIds } })
+              .toArray()
+          : []
 
-    const rooms =
-      roomIds.length > 0
-        ? await db
-            .collection("rooms")
-            .find({ _id: { $in: roomIds } })
-            .toArray()
-        : []
+        // Crear un mapa de habitaciones por ID
+        const roomsMap = rooms.reduce(
+          (map, room) => {
+            map[room._id.toString()] = room
+            return map
+          },
+          {} as Record<string, any>,
+        )
 
-    // Get room type details
-    const roomTypeIds = rooms
-      .map((r) => (r.roomTypeId ? new ObjectId(r.roomTypeId) : null))
-      .filter((id): id is ObjectId => id !== null)
+        // Obtener todos los IDs de tipos de habitación
+        const roomTypeIds = rooms
+          .map((r) => (r.roomTypeId ? new ObjectId(r.roomTypeId) : null))
+          .filter((id) => id !== null)
 
-    const roomTypes =
-      roomTypeIds.length > 0
-        ? await db
-            .collection("roomTypes")
-            .find({ _id: { $in: roomTypeIds } })
-            .toArray()
-        : []
+        // Obtener todos los tipos de habitación en una sola consulta
+        const roomTypes = roomTypeIds.length
+          ? await db
+              .collection("roomTypes")
+              .find({ _id: { $in: roomTypeIds } })
+              .toArray()
+          : []
 
-    // Combine data
-    const reservationsWithDetails = reservations.map((reservation) => {
-      const room = rooms.find((r) => r._id.toString() === reservation.roomId)
+        // Crear un mapa de tipos de habitación por ID
+        const roomTypesMap = roomTypes.reduce(
+          (map, type) => {
+            map[type._id.toString()] = type
+            return map
+          },
+          {} as Record<string, any>,
+        )
 
-      let roomDetails = null
-      if (room) {
-        const roomType = roomTypes.find((rt) => rt._id.toString() === room.roomTypeId)
-        roomDetails = {
-          _id: room._id,
-          number: room.number,
-          floor: room.floor,
-          roomType: roomType ? roomType.name : "Desconocido",
-          roomTypeId: room.roomTypeId,
-        }
-      }
+        // Recopilar todos los IDs de usuario (incluyendo checkedInBy y checkedOutBy)
+        const userIds = new Set<string>()
 
-      return {
-        ...reservation,
-        room: roomDetails,
-      }
-    })
+        reservations.forEach((r) => {
+          if (r.userId) userIds.add(r.userId)
+          if (r.checkedInBy) userIds.add(r.checkedInBy)
+          if (r.checkedOutBy) userIds.add(r.checkedOutBy)
+        })
 
-    return NextResponse.json(reservationsWithDetails)
-  } catch (error: any) {
-    console.error("Error fetching reservations:", error)
-    return NextResponse.json({ message: error.message || "An error occurred" }, { status: 500 })
+        // Convertir los IDs de string a ObjectId
+        const userObjectIds = Array.from(userIds)
+          .map((id) => {
+            try {
+              return new ObjectId(id)
+            } catch (e) {
+              console.error(`Invalid ObjectId: ${id}`)
+              return null
+            }
+          })
+          .filter((id): id is ObjectId => id !== null)
+
+        // Obtener todos los usuarios en una sola consulta
+        const users = userObjectIds.length
+          ? await db
+              .collection("users")
+              .find({ _id: { $in: userObjectIds } })
+              .toArray()
+          : []
+
+        // Crear un mapa de usuarios por ID
+        const usersMap = users.reduce(
+          (map, user) => {
+            map[user._id.toString()] = user
+            return map
+          },
+          {} as Record<string, any>,
+        )
+
+        // Enriquecer las reservaciones con información de habitación, tipo y usuario
+        return reservations.map((reservation) => {
+          const room = reservation.roomId ? roomsMap[reservation.roomId] : null
+          const roomType = room && room.roomTypeId ? roomTypesMap[room.roomTypeId] : null
+          const user = reservation.userId ? usersMap[reservation.userId] : null
+
+          // Obtener información de los usuarios que realizaron check-in/check-out
+          const checkedInByUser = reservation.checkedInBy ? usersMap[reservation.checkedInBy] : null
+          const checkedOutByUser = reservation.checkedOutBy ? usersMap[reservation.checkedOutBy] : null
+
+          return {
+            ...reservation,
+            room: room
+              ? {
+                  number: room.number,
+                  roomType: roomType ? roomType.name : "Unknown",
+                }
+              : null,
+            user: user
+              ? {
+                  firstName: user.firstName,
+                  lastName: user.lastName,
+                  email: user.email,
+                }
+              : null,
+            checkedInByUser: checkedInByUser
+              ? {
+                  firstName: checkedInByUser.firstName,
+                  lastName: checkedInByUser.lastName,
+                  email: checkedInByUser.email,
+                }
+              : null,
+            checkedOutByUser: checkedOutByUser
+              ? {
+                  firstName: checkedOutByUser.firstName,
+                  lastName: checkedOutByUser.lastName,
+                  email: checkedOutByUser.email,
+                }
+              : null,
+          }
+        })
+      },
+      60, // Caché por 1 minuto
+    )
+
+    return NextResponse.json(reservations)
+  } catch (error) {
+    return handleApiError(error, request, "reservations")
   }
 }
 

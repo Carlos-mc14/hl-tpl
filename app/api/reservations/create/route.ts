@@ -5,9 +5,14 @@ import { getCurrentUser } from "@/lib/session"
 import { generateConfirmationCode } from "@/models/reservation"
 import { sendEmail } from "@/lib/email"
 import { invalidateCachePattern } from "@/lib/cache"
+import { applyRateLimit } from "@/lib/rate-limiter"
 
 export async function POST(request: NextRequest) {
   try {
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request)
+    if (rateLimitResponse) return rateLimitResponse
+        
     const body = await request.json()
     const {
       roomTypeId,

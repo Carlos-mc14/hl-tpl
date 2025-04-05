@@ -20,6 +20,7 @@ import {
   Clock,
   AlertCircle,
   Plus,
+  FilterIcon,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -33,8 +34,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { toast } from "@/components/ui/use-toast"
 import { ReservationDetailsDialog } from "@/components/dashboard/reservation-details-dialog"
 import { ReservationCreateDialog } from "@/components/dashboard/reservation-create-dialog"
+import type { DateRange } from "react-day-picker"
+import { format, addDays, isValid } from "date-fns"
+import { es } from "date-fns/locale"
+import { DatePickerWithRange } from "@/components/ui/date-range-picker"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-interface DateRange {
+interface DateRangeType {
   label: string
   start: string
   end: string
@@ -43,10 +49,10 @@ interface DateRange {
 
 interface ReservationDashboardProps {
   dateRanges: {
-    today: DateRange
-    tomorrow: DateRange
-    thisWeek: DateRange
-    thisMonth: DateRange
+    today: DateRangeType
+    tomorrow: DateRangeType
+    thisWeek: DateRangeType
+    thisMonth: DateRangeType
   }
 }
 
@@ -64,6 +70,19 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [forceRefresh, setForceRefresh] = useState(0)
 
+  // Estado para búsqueda global
+  const [isGlobalSearch, setIsGlobalSearch] = useState(false)
+  const [customDateRange, setCustomDateRange] = useState<DateRangeType | null>(null)
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: new Date(),
+    to: addDays(new Date(), 7),
+  })
+
+  // Función para formatear fechas para la API
+  const formatDateForApi = (date: Date) => {
+    return format(date, "yyyy-MM-dd")
+  }
+
   // Función de actualización mejorada
   const fetchReservations = useCallback(
     async (showLoading = true) => {
@@ -75,14 +94,30 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
       setError(null)
 
       try {
-        const currentRange = dateRanges[activeTab as keyof typeof dateRanges]
+        let startDate, endDate
+
+        if (isGlobalSearch && customDateRange) {
+          // Usar el rango de fechas personalizado
+          startDate = customDateRange.start
+          endDate = customDateRange.end
+        } else if (isGlobalSearch && date && date.from) {
+          // Usar el selector de fechas
+          startDate = formatDateForApi(date.from)
+          endDate = date.to ? formatDateForApi(date.to) : startDate
+        } else {
+          // Usar las pestañas predefinidas
+          const currentRange = dateRanges[activeTab as keyof typeof dateRanges]
+          startDate = currentRange.start
+          endDate = currentRange.end
+        }
+
         // Add a cache-busting parameter to prevent browser caching
         const timestamp = new Date().getTime()
 
-        console.log(`Fetching reservations for ${activeTab} (${currentRange.start} to ${currentRange.end})`)
+        console.log(`Fetching reservations from ${startDate} to ${endDate}`)
 
         const response = await fetch(
-          `/api/admin/reservations?startDate=${currentRange.start}&endDate=${currentRange.end}&_=${timestamp}`,
+          `/api/admin/reservations?startDate=${startDate}&endDate=${endDate}&_=${timestamp}`,
           {
             // Add cache control headers
             headers: {
@@ -100,7 +135,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         }
 
         const data = await response.json()
-        console.log(`Loaded ${data.length} reservations for ${activeTab}`)
+        console.log(`Loaded ${data.length} reservations`)
 
         // Log the statuses of the reservations for debugging
         const statusCounts: Record<string, number> = {}
@@ -137,7 +172,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         }
       }
     },
-    [activeTab, dateRanges, forceRefresh],
+    [activeTab, dateRanges, forceRefresh, isGlobalSearch, customDateRange, date],
   )
 
   // Cargar reservaciones según el período seleccionado
@@ -150,7 +185,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     }, 10000) // Reduced to 10 seconds for more frequent updates
 
     return () => clearInterval(intervalId)
-  }, [activeTab, refreshTrigger, fetchReservations])
+  }, [activeTab, refreshTrigger, fetchReservations, isGlobalSearch, customDateRange, date])
 
   // Filtrar reservaciones cuando cambia el término de búsqueda
   useEffect(() => {
@@ -195,6 +230,11 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         description: "El huésped ha sido registrado correctamente.",
       })
 
+      // Cerrar el diálogo de detalles si está abierto
+      if (detailsDialogOpen) {
+        setDetailsDialogOpen(false)
+      }
+
       // Actualizar la lista de reservaciones
       setRefreshTrigger((prev) => prev + 1) // Trigger a refresh
     } catch (err) {
@@ -226,6 +266,11 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         title: "Check-out completado",
         description: "El huésped ha salido correctamente.",
       })
+
+      // Cerrar el diálogo de detalles si está abierto
+      if (detailsDialogOpen) {
+        setDetailsDialogOpen(false)
+      }
 
       // Actualizar la lista de reservaciones
       setRefreshTrigger((prev) => prev + 1) // Trigger a refresh
@@ -282,6 +327,45 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     }
   }
 
+  // Función para manejar el cambio en el selector de fechas
+  const handleDateRangeChange = (range: DateRange | undefined) => {
+    if (range && range.from) {
+      setDate(range)
+
+      // Crear un rango de fechas personalizado para la API
+      if (range.from && isValid(range.from)) {
+        const start = formatDateForApi(range.from)
+        const end = range.to && isValid(range.to) ? formatDateForApi(range.to) : start
+
+        setCustomDateRange({
+          label: "Personalizado",
+          start,
+          end,
+          displayDate: `${format(range.from, "d MMM", { locale: es })} - ${range.to ? format(range.to, "d MMM yyyy", { locale: es }) : format(range.from, "d MMM yyyy", { locale: es })}`,
+        })
+      }
+    }
+  }
+
+  // Función para alternar entre búsqueda global y por pestañas
+  const toggleSearchMode = () => {
+    setIsGlobalSearch(!isGlobalSearch)
+    if (!isGlobalSearch) {
+      // Si estamos cambiando a búsqueda global, inicializar con fechas actuales
+      if (!customDateRange && date && date.from) {
+        const start = formatDateForApi(date.from)
+        const end = date.to ? formatDateForApi(date.to) : start
+
+        setCustomDateRange({
+          label: "Personalizado",
+          start,
+          end,
+          displayDate: `${format(date.from, "d MMM", { locale: es })} - ${date.to ? format(date.to, "d MMM yyyy", { locale: es }) : format(date.from, "d MMM yyyy", { locale: es })}`,
+        })
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -292,105 +376,148 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
         </Button>
       </div>
 
-      <Tabs defaultValue="today" value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <TabsList>
-            <TabsTrigger value="today">Hoy</TabsTrigger>
-            <TabsTrigger value="tomorrow">Mañana</TabsTrigger>
-            <TabsTrigger value="thisWeek">Esta Semana</TabsTrigger>
-            <TabsTrigger value="thisMonth">Este Mes</TabsTrigger>
-          </TabsList>
-
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+        {!isGlobalSearch ? (
+          <Tabs defaultValue="today" value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="today">Hoy</TabsTrigger>
+              <TabsTrigger value="tomorrow">Mañana</TabsTrigger>
+              <TabsTrigger value="thisWeek">Esta Semana</TabsTrigger>
+              <TabsTrigger value="thisMonth">Este Mes</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : (
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar reservaciones..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 w-[200px] sm:w-[300px]"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setRefreshTrigger((prev) => prev + 1)}
-              title="Actualizar"
-              disabled={isRefreshing}
-            >
-              {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setForceRefresh((prev) => prev + 1)}
-              disabled={isLoading}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+            <DatePickerWithRange date={date} setDate={handleDateRangeChange} />
+            <Badge variant="outline" className="bg-primary/10">
+              {customDateRange?.displayDate || "Seleccione fechas"}
+            </Badge>
           </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar reservaciones..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 w-[200px] sm:w-[300px]"
+            />
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={toggleSearchMode}
+                  className={isGlobalSearch ? "bg-primary/10" : ""}
+                >
+                  <FilterIcon className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isGlobalSearch ? "Cambiar a búsqueda por períodos" : "Cambiar a búsqueda global"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setRefreshTrigger((prev) => prev + 1)}
+            title="Actualizar"
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
         </div>
+      </div>
 
-        <TabsContent value="today" className="mt-0">
-          <ReservationTable
-            title="Reservaciones de Hoy"
-            description={`Reservaciones para ${dateRanges.today.displayDate}`}
-            reservations={filteredReservations}
-            isLoading={isLoading}
-            error={error}
-            onViewDetails={handleViewDetails}
-            onCheckIn={handleCheckIn}
-            onCheckOut={handleCheckOut}
-            getStatusBadge={getStatusBadge}
-            getPaymentStatusBadge={getPaymentStatusBadge}
-          />
-        </TabsContent>
+      {isGlobalSearch ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Búsqueda Global de Reservaciones</CardTitle>
+            <CardDescription>
+              {customDateRange?.displayDate || "Todas las reservaciones en el rango seleccionado"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ReservationTable
+              reservations={filteredReservations}
+              isLoading={isLoading}
+              error={error}
+              onViewDetails={handleViewDetails}
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              getStatusBadge={getStatusBadge}
+              getPaymentStatusBadge={getPaymentStatusBadge}
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <Tabs defaultValue="today" value={activeTab} onValueChange={setActiveTab}>
+          <TabsContent value="today" className="mt-0">
+            <ReservationTable
+              title="Reservaciones de Hoy"
+              description={`Reservaciones para ${dateRanges.today.displayDate}`}
+              reservations={filteredReservations}
+              isLoading={isLoading}
+              error={error}
+              onViewDetails={handleViewDetails}
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              getStatusBadge={getStatusBadge}
+              getPaymentStatusBadge={getPaymentStatusBadge}
+            />
+          </TabsContent>
 
-        <TabsContent value="tomorrow" className="mt-0">
-          <ReservationTable
-            title="Reservaciones de Mañana"
-            description={`Reservaciones para ${dateRanges.tomorrow.displayDate}`}
-            reservations={filteredReservations}
-            isLoading={isLoading}
-            error={error}
-            onViewDetails={handleViewDetails}
-            onCheckIn={handleCheckIn}
-            onCheckOut={handleCheckOut}
-            getStatusBadge={getStatusBadge}
-            getPaymentStatusBadge={getPaymentStatusBadge}
-          />
-        </TabsContent>
+          <TabsContent value="tomorrow" className="mt-0">
+            <ReservationTable
+              title="Reservaciones de Mañana"
+              description={`Reservaciones para ${dateRanges.tomorrow.displayDate}`}
+              reservations={filteredReservations}
+              isLoading={isLoading}
+              error={error}
+              onViewDetails={handleViewDetails}
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              getStatusBadge={getStatusBadge}
+              getPaymentStatusBadge={getPaymentStatusBadge}
+            />
+          </TabsContent>
 
-        <TabsContent value="thisWeek" className="mt-0">
-          <ReservationTable
-            title="Reservaciones de Esta Semana"
-            description={`Reservaciones del ${dateRanges.thisWeek.displayDate}`}
-            reservations={filteredReservations}
-            isLoading={isLoading}
-            error={error}
-            onViewDetails={handleViewDetails}
-            onCheckIn={handleCheckIn}
-            onCheckOut={handleCheckOut}
-            getStatusBadge={getStatusBadge}
-            getPaymentStatusBadge={getPaymentStatusBadge}
-          />
-        </TabsContent>
+          <TabsContent value="thisWeek" className="mt-0">
+            <ReservationTable
+              title="Reservaciones de Esta Semana"
+              description={`Reservaciones del ${dateRanges.thisWeek.displayDate}`}
+              reservations={filteredReservations}
+              isLoading={isLoading}
+              error={error}
+              onViewDetails={handleViewDetails}
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              getStatusBadge={getStatusBadge}
+              getPaymentStatusBadge={getPaymentStatusBadge}
+            />
+          </TabsContent>
 
-        <TabsContent value="thisMonth" className="mt-0">
-          <ReservationTable
-            title="Reservaciones de Este Mes"
-            description={`Reservaciones de ${dateRanges.thisMonth.displayDate}`}
-            reservations={filteredReservations}
-            isLoading={isLoading}
-            error={error}
-            onViewDetails={handleViewDetails}
-            onCheckIn={handleCheckIn}
-            onCheckOut={handleCheckOut}
-            getStatusBadge={getStatusBadge}
-            getPaymentStatusBadge={getPaymentStatusBadge}
-          />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="thisMonth" className="mt-0">
+            <ReservationTable
+              title="Reservaciones de Este Mes"
+              description={`Reservaciones de ${dateRanges.thisMonth.displayDate}`}
+              reservations={filteredReservations}
+              isLoading={isLoading}
+              error={error}
+              onViewDetails={handleViewDetails}
+              onCheckIn={handleCheckIn}
+              onCheckOut={handleCheckOut}
+              getStatusBadge={getStatusBadge}
+              getPaymentStatusBadge={getPaymentStatusBadge}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
 
       {selectedReservation && (
         <ReservationDetailsDialog
@@ -412,8 +539,8 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
 }
 
 interface ReservationTableProps {
-  title: string
-  description: string
+  title?: string
+  description?: string
   reservations: any[]
   isLoading: boolean
   error: string | null
@@ -449,12 +576,30 @@ function ReservationTable({
     }
   }
 
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return "No registrado"
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch (e) {
+      return "Fecha no disponible"
+    }
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
+      {title && description && (
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+      )}
       <CardContent>
         {error ? (
           <Alert variant="destructive">
@@ -471,7 +616,7 @@ function ReservationTable({
             <p>No hay reservaciones para este período</p>
           </div>
         ) : (
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -505,8 +650,44 @@ function ReservationTable({
                         <span className="text-muted-foreground">No asignada</span>
                       )}
                     </TableCell>
-                    <TableCell>{formatDate(reservation.checkInDate)}</TableCell>
-                    <TableCell>{formatDate(reservation.checkOutDate)}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p>{formatDate(reservation.checkInDate)}</p>
+                        {reservation.checkedInAt && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <p className="text-xs text-muted-foreground underline decoration-dotted cursor-help">
+                                  {formatDateTime(reservation.checkedInAt)}
+                                </p>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Fecha y hora real de check-in</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p>{formatDate(reservation.checkOutDate)}</p>
+                        {reservation.checkedOutAt && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <p className="text-xs text-muted-foreground underline decoration-dotted cursor-help">
+                                  {formatDateTime(reservation.checkedOutAt)}
+                                </p>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Fecha y hora real de check-out</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{getStatusBadge(reservation.status)}</TableCell>
                     <TableCell>{getPaymentStatusBadge(reservation.paymentStatus)}</TableCell>
                     <TableCell className="text-right">

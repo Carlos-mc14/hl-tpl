@@ -4,9 +4,14 @@ import { sendVerificationEmail } from "@/lib/email"
 import { v4 as uuidv4 } from "uuid"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
+import { applyRateLimit } from "@/lib/rate-limiter"
 
 export async function POST(request: Request) {
   try {
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request)
+    if (rateLimitResponse) return rateLimitResponse
+        
     // Check if user is trying to resend verification for their own account
     const session = await getServerSession(authOptions)
     let email

@@ -4,6 +4,8 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { PaymentMethodsSettings } from "@/components/dashboard/payment-methods-settings"
 
+export const dynamic = "force-dynamic"
+
 export default async function PaymentMethodsSettingsPage() {
   const user = await getCurrentUser()
 

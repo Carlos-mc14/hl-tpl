@@ -26,4 +26,8 @@ next-env.d.ts
 #zip
 *.zip
 
+#todo
+todo
+
+#
 README.md

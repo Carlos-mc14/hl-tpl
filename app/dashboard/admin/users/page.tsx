@@ -5,6 +5,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { UserTable } from "@/components/admin/user-table"
 import { getCurrentUser } from "@/lib/session-utils"
 
+export const dynamic = "force-dynamic"
+
 export default async function UsersPage() {
   const user = await getCurrentUser()
 

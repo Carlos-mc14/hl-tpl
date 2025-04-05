@@ -2,20 +2,31 @@ import { NextResponse } from "next/server"
 import { getRoomTypeById, updateRoomType, deleteRoomType } from "@/models/room-type"
 import { checkPermission } from "@/lib/permissions"
 import { getCurrentUser } from "@/lib/session"
+import { applyRateLimit } from "@/lib/rate-limiter"
+import { isValidObjectId, sanitizeObject } from "@/lib/validation"
+import { handleApiError, NotFoundError, ForbiddenError, ValidationError } from "@/lib/error-handler"
+import { logAuditEvent, AuditEventType } from "@/lib/audit-logger"
+import { invalidateCachePattern } from "@/lib/cache"
 
 // GET room type by ID
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
+
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     const hasPermission = await checkPermission(user.id, "view:reservations")
 
     if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
+    }
+
+    // Validar formato del ID
+    if (!isValidObjectId(params.id)) {
+      throw new ValidationError("Invalid room type ID format")
     }
 
     // Extract the ID from params to avoid the warning
@@ -23,32 +34,40 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const roomType = await getRoomTypeById(roomTypeId)
 
     if (!roomType) {
-      return NextResponse.json({ message: "Room type not found" }, { status: 404 })
+      throw new NotFoundError("Room type not found")
     }
+
+    // Registrar evento de auditoría
+    await logAuditEvent(AuditEventType.READ, "roomType", roomTypeId, { name: roomType.name }, request)
 
     return NextResponse.json(roomType)
   } catch (error: any) {
-    console.error("Get room type error:", error)
-    return NextResponse.json(
-      { message: error.message || "An error occurred while fetching room type" },
-      { status: 500 },
-    )
+    return handleApiError(error, request, "roomType", params.id)
   }
 }
 
 // PUT update room type
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request, true)
+    if (rateLimitResponse) return rateLimitResponse
+
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     const hasPermission = await checkPermission(user.id, "manage:reservations")
 
     if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
+    }
+
+    // Validar formato del ID
+    if (!isValidObjectId(params.id)) {
+      throw new ValidationError("Invalid room type ID format")
     }
 
     // Extract the ID from params to avoid the warning
@@ -56,39 +75,84 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const roomType = await getRoomTypeById(roomTypeId)
 
     if (!roomType) {
-      return NextResponse.json({ message: "Room type not found" }, { status: 404 })
+      throw new NotFoundError("Room type not found")
     }
 
-    const body = await request.json()
+    const rawBody = await request.json()
+
+    // Sanitizar datos de entrada
+    const body = sanitizeObject(rawBody)
+
+    // Validar que el precio base sea un número positivo si está presente
+    if (body.basePrice !== undefined && (typeof body.basePrice !== "number" || body.basePrice < 0)) {
+      throw new ValidationError("Base price must be a positive number")
+    }
+
+    // Validar que la capacidad sea un número entero positivo si está presente
+    if (body.capacity !== undefined && (!Number.isInteger(body.capacity) || body.capacity <= 0)) {
+      throw new ValidationError("Capacity must be a positive integer")
+    }
+
+    // Validar que amenities sea un array si está presente
+    if (body.amenities !== undefined && !Array.isArray(body.amenities)) {
+      throw new ValidationError("Amenities must be an array")
+    }
+
+    // Validar que images sea un array si está presente
+    if (body.images !== undefined && !Array.isArray(body.images)) {
+      throw new ValidationError("Images must be an array")
+    }
+
     const success = await updateRoomType(roomTypeId, body)
 
     if (!success) {
-      return NextResponse.json({ message: "Room type not found" }, { status: 404 })
+      throw new NotFoundError("Room type not found")
     }
+
+    // Invalidar caché de tipos de habitación
+    await invalidateCachePattern("roomTypes:*")
+
+    // Registrar evento de auditoría
+    await logAuditEvent(
+      AuditEventType.UPDATE,
+      "roomType",
+      roomTypeId,
+      {
+        name: body.name || roomType.name,
+        basePrice: body.basePrice,
+        capacity: body.capacity,
+      },
+      request,
+    )
 
     return NextResponse.json({ message: "Room type updated successfully" }, { status: 200 })
   } catch (error: any) {
-    console.error("Update room type error:", error)
-    return NextResponse.json(
-      { message: error.message || "An error occurred while updating room type" },
-      { status: 500 },
-    )
+    return handleApiError(error, request, "roomType", params.id)
   }
 }
 
 // DELETE room type
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
+    // Aplicar rate limiting
+    const rateLimitResponse = await applyRateLimit(request, true)
+    if (rateLimitResponse) return rateLimitResponse
+
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     const hasPermission = await checkPermission(user.id, "manage:reservations")
 
     if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
+    }
+
+    // Validar formato del ID
+    if (!isValidObjectId(params.id)) {
+      throw new ValidationError("Invalid room type ID format")
     }
 
     // Extract the ID from params to avoid the warning
@@ -96,22 +160,24 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     const roomType = await getRoomTypeById(roomTypeId)
 
     if (!roomType) {
-      return NextResponse.json({ message: "Room type not found" }, { status: 404 })
+      throw new NotFoundError("Room type not found")
     }
 
     const success = await deleteRoomType(roomTypeId)
 
     if (!success) {
-      return NextResponse.json({ message: "Room type not found" }, { status: 404 })
+      throw new NotFoundError("Room type not found")
     }
+
+    // Invalidar caché de tipos de habitación
+    await invalidateCachePattern("roomTypes:*")
+
+    // Registrar evento de auditoría
+    await logAuditEvent(AuditEventType.DELETE, "roomType", roomTypeId, { name: roomType.name }, request)
 
     return NextResponse.json({ message: "Room type deleted successfully" }, { status: 200 })
   } catch (error: any) {
-    console.error("Delete room type error:", error)
-    return NextResponse.json(
-      { message: error.message || "An error occurred while deleting room type" },
-      { status: 500 },
-    )
+    return handleApiError(error, request, "roomType", params.id)
   }
 }
 

@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/lib/mongodb"
-import { ObjectId } from "mongodb"
 import { getCurrentUser } from "@/lib/session"
+import { applyRateLimit } from "@/lib/rate-limiter"
+import { isValidObjectId } from "@/lib/validation"
+import { handleApiError, NotFoundError, ForbiddenError } from "@/lib/error-handler"
+import { logAuditEvent, AuditEventType } from "@/lib/audit-logger"
 
 // Obtener reservas activas para una habitación específica
 export async function GET(request: Request, { params }: { params: { roomId: string } }) {
   try {
+    // Autenticación
     const user = await getCurrentUser()
-
     if (!user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+      throw new ForbiddenError("Unauthorized")
     }
 
     // Verificar permisos
@@ -19,13 +22,14 @@ export async function GET(request: Request, { params }: { params: { roomId: stri
       user.permissions.includes("view:reservations")
 
     if (!hasPermission) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+      throw new ForbiddenError("Insufficient permissions")
     }
 
     const { roomId } = params
 
-    if (!ObjectId.isValid(roomId)) {
-      return NextResponse.json({ message: "Invalid room ID format" }, { status: 400 })
+    // Validar formato del ID
+    if (!isValidObjectId(roomId)) {
+      throw new NotFoundError("Invalid room ID format")
     }
 
     const db = await getDb()
@@ -33,10 +37,7 @@ export async function GET(request: Request, { params }: { params: { roomId: stri
     // Obtener la fecha actual
     const currentDate = new Date()
 
-    // Buscar reservas activas para esta habitación
-    // Una reserva activa es aquella que:
-    // 1. Tiene el estado "Pending", "Confirmed", "Checked-in"
-    // 2. La fecha de check-out es mayor o igual a la fecha actual
+    // Buscar reservas activas para esta habitación con índices
     const reservations = await db
       .collection("reservations")
       .find({
@@ -59,10 +60,12 @@ export async function GET(request: Request, { params }: { params: { roomId: stri
       }
     })
 
+    // Registrar evento de auditoría
+    await logAuditEvent(AuditEventType.READ, "reservations", roomId, { count: reservationsWithNights.length }, request)
+
     return NextResponse.json(reservationsWithNights)
   } catch (error) {
-    console.error("Error al obtener reservas por habitación:", error)
-    return NextResponse.json({ message: "Error al obtener reservas por habitación" }, { status: 500 })
+    return handleApiError(error, request, "reservations", params.roomId)
   }
 }
 
