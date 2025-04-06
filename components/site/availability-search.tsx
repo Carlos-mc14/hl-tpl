@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,7 +14,8 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/use-toast"
 
-export function AvailabilitySearch() {
+// Componente interno que usa useSearchParams
+function SearchForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -184,6 +185,42 @@ export function AvailabilitySearch() {
         </Button>
       </div>
     </form>
+  )
+}
+
+// Componente de fallback simple para cuando los datos están cargando
+function SearchFormFallback() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-pulse">
+      <div className="space-y-2">
+        <div className="h-5 w-20 bg-muted rounded"></div>
+        <div className="h-10 w-full bg-muted rounded"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-5 w-20 bg-muted rounded"></div>
+        <div className="h-10 w-full bg-muted rounded"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-5 w-20 bg-muted rounded"></div>
+        <div className="h-10 w-full bg-muted rounded"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-5 w-20 bg-muted rounded"></div>
+        <div className="h-10 w-full bg-muted rounded"></div>
+      </div>
+      <div className="md:col-span-4">
+        <div className="h-10 w-full bg-muted rounded"></div>
+      </div>
+    </div>
+  )
+}
+
+// Componente principal que envuelve el formulario con Suspense
+export function AvailabilitySearch() {
+  return (
+    <Suspense fallback={<SearchFormFallback />}>
+      <SearchForm />
+    </Suspense>
   )
 }
 
