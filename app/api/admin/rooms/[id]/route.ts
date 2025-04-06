@@ -82,6 +82,51 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   }
 }
 
+// PATCH update room status or other partial updates
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params
+    const user = await getCurrentUser()
+
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    }
+
+    const hasPermission = await checkPermission(user.id, "manage:reservations")
+
+    if (!hasPermission) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 })
+    }
+
+    const room = await getRoomById(id)
+
+    if (!room) {
+      return NextResponse.json({ message: "Room not found" }, { status: 404 })
+    }
+
+    const body = await request.json()
+    const success = await updateRoom(id, body)
+
+    if (!success) {
+      return NextResponse.json({ message: "Room not found" }, { status: 404 })
+    }
+
+    // Obtener la habitación actualizada para devolverla en la respuesta
+    const updatedRoom = await getRoomWithTypeById(id)
+
+    return NextResponse.json(
+      {
+        message: "Room updated successfully",
+        room: updatedRoom,
+      },
+      { status: 200 },
+    )
+  } catch (error: any) {
+    console.error("Update room error:", error)
+    return NextResponse.json({ message: error.message || "An error occurred while updating room" }, { status: 500 })
+  }
+}
+
 // DELETE room
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   try {

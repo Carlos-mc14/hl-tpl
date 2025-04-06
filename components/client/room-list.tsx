@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Bed, Users, DollarSign, ChevronLeft, ChevronRight } from "lucide-react"
+import { Bed, Users, DollarSign, ChevronLeft, ChevronRight, Calendar } from "lucide-react"
 
 interface RoomType {
   _id: string
@@ -17,13 +17,15 @@ interface RoomType {
   images: string[]
   availableCount: number
   rooms: any[]
+  showingDateAvailability?: boolean
 }
 
 interface RoomListProps {
   roomTypes: RoomType[]
+  hasDateSearch?: boolean
 }
 
-export default function RoomList({ roomTypes }: RoomListProps) {
+export default function RoomList({ roomTypes, hasDateSearch = false }: RoomListProps) {
   // State to track current image for each room type
   const [currentImageIndex, setCurrentImageIndex] = useState<Record<string, number>>({})
 
@@ -144,11 +146,22 @@ export default function RoomList({ roomTypes }: RoomListProps) {
           </CardContent>
           <CardFooter className="border-t pt-4">
             <div className="w-full flex justify-between items-center">
-              <p className="text-sm text-muted-foreground">
-                {roomType.availableCount} {roomType.availableCount === 1 ? "room" : "rooms"} available
-              </p>
-              <Link href={`/reservations?roomType=${roomType._id}`}>
-                <Button>Book Now</Button>
+              {hasDateSearch ? (
+                <p className="text-sm text-muted-foreground">
+                  {roomType.availableCount} {roomType.availableCount === 1 ? "room" : "rooms"} available
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  Check dates for availability
+                </p>
+              )}
+              <Link
+                href={
+                  hasDateSearch ? `/reservations?roomType=${roomType._id}` : `/reservations?roomType=${roomType._id}`
+                }
+              >
+                <Button>{hasDateSearch ? "Book Now" : "View Details"}</Button>
               </Link>
             </div>
           </CardFooter>
