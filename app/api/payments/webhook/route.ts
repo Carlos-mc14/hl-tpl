@@ -114,6 +114,88 @@ export async function POST(request: Request) {
     await invalidateCache(`payment:${payment._id}`)
     await invalidateCachePattern("payments:*")
 
+    // Enviar notificación por correo al administrador sobre la actualización del pago
+    try {
+      const adminEmail = process.env.ADMIN_EMAIL || "no-reply@nexius.lat"
+
+      // Obtener información de la reserva si existe
+      let reservationInfo = "No disponible"
+      let guestInfo = "No disponible"
+
+      if (payment.reservationId) {
+        const reservation = await db.collection("reservations").findOne({
+          _id: new ObjectId(payment.reservationId),
+        })
+
+        if (reservation) {
+          reservationInfo = `ID: ${reservation._id}, Código: ${reservation.confirmationCode || "N/A"}`
+          guestInfo = `${reservation.guest?.firstName || ""} ${reservation.guest?.lastName || ""} (${reservation.guest?.email || "Sin email"})`
+        }
+      } else if (payment.metadata?.originalTempId) {
+        const tempReservation = await db.collection("temporaryReservations").findOne({
+          _id: new ObjectId(payment.metadata.originalTempId),
+        })
+
+        if (tempReservation) {
+          reservationInfo = `ID Temporal: ${tempReservation._id}, Código: ${tempReservation.confirmationCode || "N/A"}`
+          guestInfo = `${tempReservation.guest?.firstName || ""} ${tempReservation.guest?.lastName || ""} (${tempReservation.guest?.email || "Sin email"})`
+        }
+      }
+
+      // Determinar el método de pago
+      const paymentMethod = payment.method || payment.metadata?.paymentMethod || "No especificado"
+
+      await sendEmail({
+        to: adminEmail,
+        subject: `Notificación de Pago - ${paymentData.status} - Hotel Manager`,
+        text: `
+          Se ha recibido una notificación de pago de PayU.
+          
+          Referencia: ${paymentData.referenceCode}
+          Estado: ${paymentData.status}
+          Monto: ${paymentData.amount} ${paymentData.currency}
+          Método de pago: ${paymentMethod}
+          ID de transacción: ${paymentData.transactionId}
+          
+          Información de la reserva: ${reservationInfo}
+          Huésped: ${guestInfo}
+          
+          Fecha y hora: ${new Date().toLocaleString()}
+        `,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: ${paymentData.status === "Completed" ? "#4caf50" : paymentData.status === "Failed" ? "#f44336" : "#ff9800"};">
+              Notificación de Pago - ${paymentData.status}
+            </h1>
+            
+            <p>Se ha recibido una notificación de pago de PayU.</p>
+            
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+              <p><strong>Detalles del pago:</strong></p>
+              <p>Referencia: ${paymentData.referenceCode}</p>
+              <p>Estado: <span style="color: ${paymentData.status === "Completed" ? "#4caf50" : paymentData.status === "Failed" ? "#f44336" : "#ff9800"};">${paymentData.status}</span></p>
+              <p>Monto: ${paymentData.amount} ${paymentData.currency}</p>
+              <p>Método de pago: ${paymentMethod}</p>
+              <p>ID de transacción: ${paymentData.transactionId || "No disponible"}</p>
+            </div>
+            
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+              <p><strong>Información de la reserva:</strong></p>
+              <p>${reservationInfo}</p>
+              <p>Huésped: ${guestInfo}</p>
+            </div>
+            
+            <p>Fecha y hora: ${new Date().toLocaleString()}</p>
+          </div>
+        `,
+      })
+
+      console.log("Admin payment notification email sent to", adminEmail)
+    } catch (emailError) {
+      console.error("Error sending admin payment notification email:", emailError)
+      // Continuamos aunque falle el envío del correo
+    }
+
     // Si el pago es para una reserva temporal y está completado, convertirla en permanente
     if (payment.metadata && payment.metadata.isTemporary === true && paymentData.status === "Completed") {
       console.log("Processing completed payment for temporary reservation")
@@ -175,7 +257,7 @@ export async function POST(request: Request) {
             // Enviar correo de notificación al administrador
             try {
               await sendEmail({
-                to: "admin@hotelmanager.com", // Cambiar por el correo del administrador
+                to: process.env.ADMIN_EMAIL || "no-reply@nexius.lat",
                 subject: "ALERTA: Conflicto de reserva - Hotel Manager",
                 text: `
                 Se ha recibido un pago para una reserva temporal (ID: ${tempReservation._id}), 
@@ -419,7 +501,7 @@ function mapTransactionStatus(state: string): "Completed" | "Failed" | "Pending"
   }
 }
 
-// Nueva función para obtener un nombre legible del método de pago
+// Función para obtener un nombre legible del método de pago
 function getReadablePaymentMethod(method: string): string {
   switch (method.toUpperCase()) {
     case "VISA":

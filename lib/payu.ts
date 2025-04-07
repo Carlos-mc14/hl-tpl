@@ -607,6 +607,3 @@ export function mapTransactionStatus(state: string): "Completed" | "Failed" | "P
       return "Pending"
   }
 }
-
-// Exportar la función para que pueda ser usada en el webhook
-
