@@ -6,10 +6,25 @@ import { SiteHeader } from "@/components/site/site-header"
 import { SiteFooter } from "@/components/site/site-footer"
 import { AvailabilitySearch } from "@/components/site/availability-search"
 import { checkRoomTypeAvailability } from "@/lib/availability"
+import { Suspense } from "react"
+import { isValidDate } from "@/lib/validation"
 
 // Función para serializar objetos MongoDB
 function serializeData(data: any) {
   return JSON.parse(JSON.stringify(data))
+}
+
+// Función para crear una fecha válida a partir de un string
+function createValidDate(dateString: string | undefined): Date | null {
+  if (!dateString) return null
+
+  try {
+    const date = new Date(dateString)
+    return isValidDate(date) ? date : null
+  } catch (e) {
+    console.error("Error creating date from string:", dateString, e)
+    return null
+  }
 }
 
 export default async function RoomsPage({
@@ -19,15 +34,24 @@ export default async function RoomsPage({
 }) {
   // Await searchParams to ensure it's resolved
   const searchParams = await Promise.resolve(rawSearchParams)
+  console.log("Search params received:", searchParams) // Debugging
 
   // Obtener parámetros de búsqueda
-  const checkIn = searchParams?.checkIn as string | undefined
-  const checkOut = searchParams?.checkOut as string | undefined
+  const checkInStr = searchParams?.checkIn as string | undefined
+  const checkOutStr = searchParams?.checkOut as string | undefined
   const adults = searchParams?.adults as string | undefined
   const children = searchParams?.children as string | undefined
 
-  // Determinar si hay una búsqueda de disponibilidad activa
-  const hasDateSearch = Boolean(checkIn && checkOut)
+  // Crear objetos Date válidos
+  const checkInDate = createValidDate(checkInStr)
+  const checkOutDate = createValidDate(checkOutStr)
+
+  // Determinar si hay una búsqueda de disponibilidad activa con fechas válidas
+  const hasDateSearch = Boolean(checkInDate && checkOutDate)
+
+  if (checkInStr && checkOutStr && !hasDateSearch) {
+    console.error("Invalid dates provided:", { checkIn: checkInStr, checkOut: checkOutStr })
+  }
 
   // Fetch room types from the database
   const roomTypesData = await getAllRoomTypes()
@@ -44,15 +68,20 @@ export default async function RoomsPage({
   // Si hay búsqueda por fechas, verificar disponibilidad real
   let roomsByType = []
 
-  if (hasDateSearch && checkIn && checkOut) {
+  if (hasDateSearch && checkInDate && checkOutDate) {
+    console.log("Checking availability for dates:", {
+      checkIn: checkInDate.toISOString(),
+      checkOut: checkOutDate.toISOString(),
+    }) // Debugging
+
     // Verificar disponibilidad para cada tipo de habitación
     const availabilityPromises = roomTypes.map(async (type: any) => {
       try {
         // Verificar disponibilidad real usando la API
         const availability = await checkRoomTypeAvailability(
           type._id.toString(),
-          new Date(checkIn),
-          new Date(checkOut),
+          checkInDate,
+          checkOutDate,
           Number.parseInt(adults || "2"),
           Number.parseInt(children || "0"),
         )
@@ -114,15 +143,9 @@ export default async function RoomsPage({
         {!hasDateSearch && (
           <section className="py-8 bg-white">
             <div className="container mx-auto px-4 md:px-6">
-              <div className="max-w-4xl mx-auto">
-                <div className="bg-muted/30 p-6 rounded-lg border">
-                  <h2 className="text-xl font-semibold mb-4 text-center">Check Room Availability</h2>
-                  <p className="text-center text-muted-foreground mb-6">
-                    Select your dates to see available rooms for your stay
-                  </p>
-                  <AvailabilitySearch />
-                </div>
-              </div>
+              <Suspense fallback={<div className="h-64 flex items-center justify-center">Loading search form...</div>}>
+                <AvailabilitySearch variant="default" />
+              </Suspense>
             </div>
           </section>
         )}
@@ -134,10 +157,14 @@ export default async function RoomsPage({
                 <h2 className="text-2xl font-bold mb-2">Available Rooms</h2>
                 <p className="text-muted-foreground">
                   Showing availability for {adults || "2"} adults and {children || "0"} children from{" "}
-                  {new Date(checkIn!).toLocaleDateString()} to {new Date(checkOut!).toLocaleDateString()}
+                  {checkInDate!.toLocaleDateString()} to {checkOutDate!.toLocaleDateString()}
                 </p>
                 <div className="mt-4">
-                  <AvailabilitySearch />
+                  <Suspense
+                    fallback={<div className="h-32 flex items-center justify-center">Loading search form...</div>}
+                  >
+                    <AvailabilitySearch variant="embedded" />
+                  </Suspense>
                 </div>
               </div>
             )}

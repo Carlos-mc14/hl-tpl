@@ -1,26 +1,55 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
+import { isValidDate } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { checkInDate, checkOutDate, roomTypeId, adults, children } = body
 
+    console.log("API received request:", { checkInDate, checkOutDate, roomTypeId, adults, children })
+
     if (!checkInDate || !checkOutDate || !roomTypeId) {
-      return NextResponse.json({ message: "Datos incompletos" }, { status: 400 })
+      return NextResponse.json(
+        {
+          message: "Datos incompletos",
+          details: { checkInDate, checkOutDate, roomTypeId },
+        },
+        { status: 400 },
+      )
     }
 
+    // Asegurar que estamos trabajando con objetos Date
     const checkIn = new Date(checkInDate)
     const checkOut = new Date(checkOutDate)
 
     // Validar fechas
-    if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
-      return NextResponse.json({ message: "Fechas inválidas" }, { status: 400 })
+    if (!isValidDate(checkIn) || !isValidDate(checkOut)) {
+      return NextResponse.json(
+        {
+          message: "Fechas inválidas",
+          details: {
+            checkInDate,
+            checkOutDate,
+            parsedCheckIn: checkIn.toString(),
+            parsedCheckOut: checkOut.toString(),
+            isValidCheckIn: isValidDate(checkIn),
+            isValidCheckOut: isValidDate(checkOut),
+          },
+        },
+        { status: 400 },
+      )
     }
 
     if (checkIn >= checkOut) {
-      return NextResponse.json({ message: "La fecha de salida debe ser posterior a la de entrada" }, { status: 400 })
+      return NextResponse.json(
+        {
+          message: "La fecha de salida debe ser posterior a la de entrada",
+          details: { checkIn: checkIn.toISOString(), checkOut: checkOut.toISOString() },
+        },
+        { status: 400 },
+      )
     }
 
     const db = await getDb()
@@ -123,7 +152,13 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("Error checking availability:", error)
-    return NextResponse.json({ message: error.message || "Error al verificar disponibilidad" }, { status: 500 })
+    return NextResponse.json(
+      {
+        message: error.message || "Error al verificar disponibilidad",
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      },
+      { status: 500 },
+    )
   }
 }
 

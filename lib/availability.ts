@@ -1,49 +1,53 @@
 import { getDb } from "@/lib/mongodb"
 import { ObjectId } from "mongodb"
 import { getCachedData } from "@/lib/cache"
+import { isValidDate } from "@/lib/validation"
 
 // Función para verificar la disponibilidad de un tipo de habitación
 export async function checkRoomTypeAvailability(
   roomTypeId: string,
   checkInDate: Date,
   checkOutDate: Date,
-  adults: number = 0,
-  children: number = 0,
+  adults = 2,
+  children = 0,
 ) {
-  // Crear una clave de caché única para esta consulta
-  const cacheKey = `availability:${roomTypeId}:${checkInDate.toISOString()}:${checkOutDate.toISOString()}:${adults}:${children}`
+  try {
+    // Validar datos
+    if (!roomTypeId || !checkInDate || !checkOutDate) {
+      console.error("Missing required data for availability check", { roomTypeId, checkInDate, checkOutDate })
+      return {
+        available: false,
+        availableRooms: 0,
+        message: "Datos incompletos",
+      }
+    }
 
-  // Usar el sistema de caché existente
-  return getCachedData(
-    cacheKey,
-    async () => {
-      try {
-        // Validar datos
-        if (!roomTypeId || !checkInDate || !checkOutDate) {
-          return {
-            available: false,
-            availableRooms: 0,
-            message: "Datos incompletos",
-          }
-        }
+    // Validar fechas
+    if (!isValidDate(checkInDate) || !isValidDate(checkOutDate)) {
+      console.error("Invalid dates for availability check", { checkInDate, checkOutDate })
+      return {
+        available: false,
+        availableRooms: 0,
+        message: "Fechas inválidas",
+      }
+    }
 
-        // Validar fechas
-        if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
-          return {
-            available: false,
-            availableRooms: 0,
-            message: "Fechas inválidas",
-          }
-        }
+    if (checkInDate >= checkOutDate) {
+      console.error("Check-out date must be after check-in date", { checkInDate, checkOutDate })
+      return {
+        available: false,
+        availableRooms: 0,
+        message: "La fecha de salida debe ser posterior a la de entrada",
+      }
+    }
 
-        if (checkInDate >= checkOutDate) {
-          return {
-            available: false,
-            availableRooms: 0,
-            message: "La fecha de salida debe ser posterior a la de entrada",
-          }
-        }
+    // Crear una clave de caché única para esta consulta
+    const cacheKey = `availability:${roomTypeId}:${checkInDate.toISOString()}:${checkOutDate.toISOString()}:${adults}:${children}`
 
+    // Usar el sistema de caché existente
+    return getCachedData(
+      cacheKey,
+      async () => {
         const db = await getDb()
 
         // Verificar si el tipo de habitación existe
@@ -147,16 +151,16 @@ export async function checkRoomTypeAvailability(
             : "No hay habitaciones disponibles para las fechas seleccionadas",
           availableRooms: rooms.length - totalOccupied,
         }
-      } catch (error: any) {
-        console.error("Error checking availability:", error)
-        return {
-          available: false,
-          availableRooms: 0,
-          message: error.message || "Error al verificar disponibilidad",
-        }
-      }
-    },
-    300, // Caché por 5 minutos
-  )
+      },
+      300, // Caché por 5 minutos
+    )
+  } catch (error: any) {
+    console.error("Error checking availability:", error)
+    return {
+      available: false,
+      availableRooms: 0,
+      message: error.message || "Error al verificar disponibilidad",
+    }
+  }
 }
 
