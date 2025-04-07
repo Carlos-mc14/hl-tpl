@@ -211,6 +211,13 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
       // Para pagos online (Full o Partial)
       const amount = paymentType === "Full" ? totalPrice : partialAmount
 
+      // Guardar el método de pago en sessionStorage antes de la solicitud
+      sessionStorage.setItem("paymentMethod", paymentMethod)
+
+      if (paymentType === "Partial") {
+        sessionStorage.setItem("paymentAmount", partialAmount.toString())
+      }
+
       const response = await fetch("/api/payments/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,7 +227,7 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
           paymentType,
           paymentMethod, // Método de pago seleccionado
           otpCode: paymentMethod === "YAPE" ? otpCode : undefined,
-          returnUrl: `${window.location.origin}/reservations/confirmation`,
+          returnUrl: `${window.location.origin}/reservations/confirmation?method=${paymentMethod}`,
           cancelUrl: `${window.location.origin}/reservations/payment`,
           // Incluir los datos completos de la reserva
           reservationData: reservationDetails,
@@ -239,6 +246,7 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
       // Guardar información adicional en sessionStorage
       sessionStorage.setItem("actualReservationId", data.actualReservationId || reservationId)
       sessionStorage.setItem("paymentId", data.paymentId)
+      sessionStorage.setItem("paymentCompleted", "true")
 
       // Si PayU proporciona una URL de redirección, redirigir a ella
       if (data.payuResponse && data.payuResponse.code === "SUCCESS") {
@@ -253,19 +261,11 @@ export default function PaymentOptions({ reservationId, totalPrice, onPaymentCom
           }
         }
 
-        // Si no hay URL específica pero la respuesta es exitosa, marcar como completado
-        sessionStorage.setItem("paymentCompleted", "true")
-        sessionStorage.setItem("paymentMethod", paymentType)
-
-        if (paymentType === "Partial") {
-          sessionStorage.setItem("paymentAmount", partialAmount.toString())
-        }
-
         // Redirigir a la página de confirmación
         if (onPaymentComplete) {
           onPaymentComplete()
         } else {
-          router.push("/reservations/confirmation")
+          router.push(`/reservations/confirmation?method=${paymentMethod}`)
         }
       } else {
         // Si no hay respuesta exitosa de PayU

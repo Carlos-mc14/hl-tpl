@@ -124,11 +124,19 @@ export async function calculateReservationPaymentStatus(reservationId: string) {
   await invalidateCachePattern("reservations:*")
   await invalidateCachePattern("reservationsWithDetails:*")
 
+  // Obtener el método de pago más reciente
+  const latestPayment =
+    payments.length > 0
+      ? payments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0]
+      : null
+
   return {
     totalPrice: reservation.totalPrice,
     totalPaid,
     remaining: Math.max(0, reservation.totalPrice - totalPaid),
     paymentStatus,
+    paymentMethod: latestPayment?.method || reservation.paymentMethod || "No especificado",
+    paymentMetadata: latestPayment?.metadata || {},
   }
 }
 

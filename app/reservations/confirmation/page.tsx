@@ -73,8 +73,8 @@ export default function ConfirmationPage() {
   const [configLoading, setConfigLoading] = useState(true)
 
   const paymentId = searchParams.get("paymentId")
+  const paymentMethod = searchParams.get("method") || sessionStorage.getItem("paymentMethod") || ""
   const paymentCompleted = sessionStorage.getItem("paymentCompleted") === "true"
-  const paymentMethod = sessionStorage.getItem("paymentMethod") || ""
   const actualReservationId = sessionStorage.getItem("actualReservationId") || ""
 
   // Fetch site config
@@ -123,6 +123,13 @@ export default function ConfirmationPage() {
           .then((data) => {
             console.log("Datos de pago recuperados:", data)
 
+            // Determinar el método de pago correcto
+            // Prioridad: 1. URL param, 2. Metadata, 3. Payment method
+            const displayPaymentMethod =
+              paymentMethod || (data.payment.metadata && data.payment.metadata.paymentMethod) || data.payment.method
+
+            console.log("Método de pago determinado:", displayPaymentMethod)
+
             // Usar los datos de la reserva temporal si están disponibles
             if (data.isTemporary && data.tempReservationData) {
               const tempData = data.tempReservationData
@@ -134,7 +141,7 @@ export default function ConfirmationPage() {
                 email: tempData.guest.email,
                 phone: tempData.guest.phone || "",
                 paymentStatus: data.reservationPaymentStatus.paymentStatus,
-                paymentMethod: data.payment.method,
+                paymentMethod: formatPaymentMethod(displayPaymentMethod),
                 paymentAmount: data.payment.amount,
                 remainingAmount: data.reservationPaymentStatus.remaining,
               })
@@ -143,7 +150,7 @@ export default function ConfirmationPage() {
               setReservation({
                 ...parsedData,
                 paymentStatus: data.payment.status,
-                paymentMethod: data.payment.method,
+                paymentMethod: formatPaymentMethod(displayPaymentMethod),
                 paymentAmount: data.payment.amount,
                 remainingAmount: data.reservationPaymentStatus.remaining,
               })
@@ -166,12 +173,12 @@ export default function ConfirmationPage() {
           remaining = parsedData.totalPrice
         } else if (paymentMethod === "Partial") {
           status = "Parcial"
-          method = "Tarjeta"
+          method = formatPaymentMethod(sessionStorage.getItem("paymentMethod") || "")
           amount = Number.parseFloat(sessionStorage.getItem("paymentAmount") || "0")
           remaining = parsedData.totalPrice - amount
         } else {
           status = "Completado"
-          method = "Tarjeta"
+          method = formatPaymentMethod(sessionStorage.getItem("paymentMethod") || "")
           amount = parsedData.totalPrice
           remaining = 0
         }
@@ -195,6 +202,28 @@ export default function ConfirmationPage() {
       setIsLoading(false)
     }
   }, [paymentId, paymentCompleted, paymentMethod, actualReservationId])
+
+  // Función para formatear el método de pago para mostrar
+  const formatPaymentMethod = (method: string): string => {
+    if (!method) return "No especificado"
+
+    console.log("Formateando método de pago:", method)
+
+    switch (method.toUpperCase()) {
+      case "VISA":
+        return "Tarjeta Visa"
+      case "MASTERCARD":
+        return "Tarjeta Mastercard"
+      case "YAPE":
+        return "Yape"
+      case "PAGOEFECTIVO":
+        return "PagoEfectivo"
+      case "ONARRIVAL":
+        return "Pago al llegar"
+      default:
+        return method
+    }
+  }
 
   if (isLoading || configLoading) {
     return (
@@ -264,14 +293,14 @@ export default function ConfirmationPage() {
                   <div>
                     <h3 className="font-medium text-gray-500 mb-2">Información del Huésped</h3>
                     <p className="mb-1">
-                      <span className="font-medium">Nombre:</span> {reservation.firstName} {reservation.lastName}
+                      <span className="font-medium">Nombre: </span> {reservation.firstName} {reservation.lastName}
                     </p>
                     <p className="mb-1">
-                      <span className="font-medium">Email:</span> {reservation.email}
+                      <span className="font-medium">Email: </span> {reservation.email}
                     </p>
                     {reservation.phone && (
                       <p className="mb-1">
-                        <span className="font-medium">Teléfono:</span> {reservation.phone}
+                        <span className="font-medium">Teléfono: </span> {reservation.phone}
                       </p>
                     )}
                   </div>
@@ -279,22 +308,22 @@ export default function ConfirmationPage() {
                     <h3 className="font-medium text-gray-500 mb-2">Información de la Estancia</h3>
                     <p className="flex items-center mb-1">
                       <Calendar className="h-4 w-4 mr-2 text-primary" />
-                      <span className="font-medium">Check-in:</span>{" "}
+                      <span className="font-medium">Check-in: </span>{" "}
                       {new Date(reservation.checkInDate).toLocaleDateString()}
                     </p>
                     <p className="flex items-center mb-1">
                       <Calendar className="h-4 w-4 mr-2 text-primary" />
-                      <span className="font-medium">Check-out:</span>{" "}
+                      <span className="font-medium">Check-out: </span>{" "}
                       {new Date(reservation.checkOutDate).toLocaleDateString()}
                     </p>
                     <p className="flex items-center mb-1">
                       <Bed className="h-4 w-4 mr-2 text-primary" />
-                      <span className="font-medium">Habitación:</span> {reservation.roomTypeName} (Habitación{" "}
+                      <span className="font-medium">Habitación: </span> {reservation.roomTypeName} (Habitación{" "}
                       {reservation.roomNumber})
                     </p>
                     <p className="flex items-center mb-1">
                       <Users className="h-4 w-4 mr-2 text-primary" />
-                      <span className="font-medium">Huéspedes:</span> {reservation.adults} adultos,{" "}
+                      <span className="font-medium">Huéspedes: </span> {reservation.adults} adultos,{" "}
                       {reservation.children} niños
                     </p>
                   </div>

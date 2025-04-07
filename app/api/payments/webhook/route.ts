@@ -229,13 +229,14 @@ export async function POST(request: Request) {
               payment.type === "Full"
                 ? ("Paid" as "Pending" | "Partial" | "Paid")
                 : ("Partial" as "Pending" | "Partial" | "Paid"),
-            paymentMethod: "PayU",
+            paymentMethod: payment.method || payment.metadata?.paymentMethod || "PayU", // Usar el método guardado en el pago
             specialRequests: tempReservation.specialRequests,
             confirmationCode: tempReservation.confirmationCode,
             metadata: {
               originalTempId: payment.metadata.originalTempId,
               paymentId: payment._id.toString(),
               needsRoomAssignment: selectedRoom ? false : true,
+              paymentMethod: payment.method || payment.metadata?.paymentMethod, // Guardar también en los metadatos
             },
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -415,6 +416,22 @@ function mapTransactionStatus(state: string): "Completed" | "Failed" | "Pending"
       return "Failed"
     default:
       return "Pending"
+  }
+}
+
+// Nueva función para obtener un nombre legible del método de pago
+function getReadablePaymentMethod(method: string): string {
+  switch (method.toUpperCase()) {
+    case "VISA":
+      return "Tarjeta Visa"
+    case "MASTERCARD":
+      return "Tarjeta Mastercard"
+    case "YAPE":
+      return "Yape"
+    case "PAGOEFECTIVO":
+      return "PagoEfectivo"
+    default:
+      return method || "Desconocido"
   }
 }
 

@@ -118,6 +118,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       reservationPaymentStatus,
       isTemporary: isTemporaryReservation,
       tempReservationData: isTemporaryReservation ? tempReservationData : null,
+      paymentMethod: payment.method || (payment.metadata && payment.metadata.paymentMethod) || "Unknown",
     })
   } catch (error: any) {
     console.error("Payment status error:", error)

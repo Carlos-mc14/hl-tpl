@@ -11,11 +11,10 @@ import { applyRateLimit } from "@/lib/rate-limiter"
 // Modificar la función para mejorar el manejo de reservas temporales
 export async function POST(request: Request) {
   try {
-
     // Aplicar rate limiting
     const rateLimitResponse = await applyRateLimit(request)
     if (rateLimitResponse) return rateLimitResponse
-    
+
     // Obtener el usuario actual (si está autenticado)
     const user = await getCurrentUser()
     // Ya no requerimos autenticación para procesar pagos
@@ -145,7 +144,7 @@ export async function POST(request: Request) {
         amount,
         currency: "PEN",
         status: "Pending",
-        method: paymentMethod as any, // Asegurarse de que el método de pago sea correcto
+        method: paymentMethod, // Asegurarse de que el método de pago sea correcto
         type: paymentType,
         paymentDate: new Date(),
         metadata: {
@@ -154,7 +153,7 @@ export async function POST(request: Request) {
           cancelUrl,
           isTemporary: true,
           originalTempId: reservationId,
-          paymentMethod,
+          paymentMethod, // Guardar explícitamente el método de pago en los metadatos
         },
       })
 
@@ -275,7 +274,7 @@ export async function POST(request: Request) {
       `Reserva Hotel ${paymentType === "Full" ? "Pago Completo" : "Pago Parcial"}`,
       paymentMethod, // Método de pago seleccionado por el usuario
       {
-        returnUrl: `${returnUrl}?paymentId=${payment._id}`,
+        returnUrl: `${returnUrl}?paymentId=${payment._id}&method=${paymentMethod}`, // Incluir el método en la URL de retorno
         cancelUrl: `${cancelUrl}?paymentId=${payment._id}`,
       },
       undefined, // Número de cuotas (ya no se usa)
@@ -324,7 +323,7 @@ export async function POST(request: Request) {
             },
           },
         )
-          
+
         // Verificar si la transacción fue realmente aprobada o está pendiente legítimamente
         // IMPORTANT: Check if transaction was APPROVED or PENDING, not just if the API call was successful
         if (transactionState === "APPROVED" || transactionState === "PENDING") {
@@ -411,17 +410,20 @@ export async function POST(request: Request) {
           // Si el estado de la transacción NO es APPROVED ni PENDING, considerarlo como no exitoso
           // aunque la comunicación con PayU haya sido correcta
           console.log(`Transacción rechazada: Estado=${transactionState}, Código=${transactionResponseCode}`)
-          
-          return NextResponse.json({
-            success: false,
-            paymentId: payment._id,
-            paymentStatus: paymentStatus,
-            isTemporary: isTemporaryId,
-            originalTempId: isTemporaryId ? reservationId : null,
-            actualReservationId,
-            message: "Transacción rechazada por la entidad financiera",
-            payuResponse,
-          }, { status: 400 })
+
+          return NextResponse.json(
+            {
+              success: false,
+              paymentId: payment._id,
+              paymentStatus: paymentStatus,
+              isTemporary: isTemporaryId,
+              originalTempId: isTemporaryId ? reservationId : null,
+              actualReservationId,
+              message: "Transacción rechazada por la entidad financiera",
+              payuResponse,
+            },
+            { status: 400 },
+          )
         }
       } else {
         // Si hay un error en la respuesta de PayU, actualizar el estado del pago
