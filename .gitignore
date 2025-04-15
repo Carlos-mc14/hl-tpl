@@ -29,5 +29,5 @@ next-env.d.ts
 #todo
 todo
 
-#
-README.md
+# .md
+*.md

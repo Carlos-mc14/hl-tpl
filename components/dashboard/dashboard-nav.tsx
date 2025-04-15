@@ -4,7 +4,7 @@ import type React from "react"
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { BarChart3, Users, ShieldCheck, Calendar, Settings, Home, LogOut, Bed, Hotel, Globe } from "lucide-react"
+import { BarChart3, Users, ShieldCheck, Calendar, Settings, Home, LogOut, Bed, Hotel, Globe, Coffee } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -32,6 +32,11 @@ const navItems: NavItem[] = [
     title: "Rooms",
     href: "/dashboard/admin/rooms",
     icon: Hotel,
+  },
+  {
+    title: "Extra Services",
+    href: "/dashboard/admin/services",
+    icon: Coffee,
   },
   {
     title: "Room Types",

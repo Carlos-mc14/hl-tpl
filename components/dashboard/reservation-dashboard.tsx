@@ -151,7 +151,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
           toast({
             title: "Datos actualizados",
             description: `Se han cargado ${data.length} reservaciones.`,
-            duration: 3000,
+            duration: 10,
           })
         }
       } catch (err) {
@@ -182,7 +182,7 @@ export function ReservationDashboard({ dateRanges }: ReservationDashboardProps) 
     // Set up an interval to refresh data every 10 seconds
     const intervalId = setInterval(() => {
       fetchReservations(false) // Silent refresh (no loading indicator)
-    }, 10000) // Reduced to 10 seconds for more frequent updates
+    }, 1200000) // Reduced to 20 minutes for more frequent updates
 
     return () => clearInterval(intervalId)
   }, [activeTab, refreshTrigger, fetchReservations, isGlobalSearch, customDateRange, date])

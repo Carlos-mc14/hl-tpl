@@ -11,6 +11,7 @@ import { Calendar, Clock, Users, Bed, DollarSign, MessageSquare, LogOut } from "
 import { format } from "date-fns"
 import Link from "next/link"
 import { toast } from "@/components/ui/use-toast"
+import { ExtraServicesList } from "@/components/client/extra-services-list"
 
 interface Reservation {
   _id: string
@@ -36,6 +37,8 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [selectedReservation, setSelectedReservation] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("active")
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -135,6 +138,12 @@ export default function ProfilePage() {
     return res.status === "Confirmed" && checkInDate > currentDate
   })
 
+  // Función para manejar la visualización de servicios
+  const handleViewServices = (reservationId: string) => {
+    setSelectedReservation(reservationId)
+    setActiveTab("services") // Cambiar a la pestaña de servicios
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto py-10">
@@ -232,7 +241,7 @@ export default function ProfilePage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="active" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="active">
             Active Reservations
@@ -248,6 +257,7 @@ export default function ProfilePage() {
             Past Reservations
             {pastReservations.length > 0 && <Badge className="ml-2 bg-primary">{pastReservations.length}</Badge>}
           </TabsTrigger>
+          {selectedReservation && <TabsTrigger value="services">Extra Services</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="active">
@@ -263,7 +273,11 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-4">
               {activeReservations.map((reservation) => (
-                <ReservationCard key={reservation._id.toString()} reservation={reservation} />
+                <ReservationCard
+                  key={reservation._id.toString()}
+                  reservation={reservation}
+                  onViewServices={() => handleViewServices(reservation._id.toString())}
+                />
               ))}
             </div>
           )}
@@ -282,7 +296,11 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-4">
               {upcomingReservations.map((reservation) => (
-                <ReservationCard key={reservation._id.toString()} reservation={reservation} />
+                <ReservationCard
+                  key={reservation._id.toString()}
+                  reservation={reservation}
+                  onViewServices={() => handleViewServices(reservation._id.toString())}
+                />
               ))}
             </div>
           )}
@@ -301,17 +319,41 @@ export default function ProfilePage() {
           ) : (
             <div className="grid gap-4">
               {pastReservations.map((reservation) => (
-                <ReservationCard key={reservation._id.toString()} reservation={reservation} />
+                <ReservationCard
+                  key={reservation._id.toString()}
+                  reservation={reservation}
+                  onViewServices={() => handleViewServices(reservation._id.toString())}
+                />
               ))}
             </div>
           )}
         </TabsContent>
+
+        {selectedReservation && (
+          <TabsContent value="services">
+            <Card>
+              <CardHeader>
+                <CardTitle>Extra Services for Reservation</CardTitle>
+                <CardDescription>Request additional services for your stay</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ExtraServicesList reservationId={selectedReservation} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )
 }
 
-function ReservationCard({ reservation }: { reservation: Reservation }) {
+function ReservationCard({
+  reservation,
+  onViewServices,
+}: {
+  reservation: Reservation
+  onViewServices: () => void
+}) {
   const checkInDate = new Date(reservation.checkInDate)
   const checkOutDate = new Date(reservation.checkOutDate)
 
@@ -393,11 +435,15 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
           <div className="flex items-center">
             <MessageSquare className="h-4 w-4 mr-2 text-muted-foreground" />
             <span className="text-sm">
-              {reservation.status === "Checked-out" ? "Leave a review" : "Special requests"}
+              {reservation.status === "Checked-out" ? "Service history" : "Extra services"}
             </span>
           </div>
-          <Button size="sm" variant={reservation.status === "Checked-out" ? "default" : "outline"}>
-            {reservation.status === "Checked-out" ? "Write Review" : "View Details"}
+          <Button
+            size="sm"
+            variant={reservation.status === "Checked-out" ? "default" : "outline"}
+            onClick={onViewServices}
+          >
+            {reservation.status === "Checked-out" ? "View History" : "View Services"}
           </Button>
         </div>
       </CardContent>
@@ -434,4 +480,3 @@ function getPaymentStatusBadge(status: string) {
       return <Badge>{status || "Unknown"}</Badge>
   }
 }
-
